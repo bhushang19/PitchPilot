@@ -1,5 +1,8 @@
 # Web UI (reserved)
 
+> **Build guide:** see [`docs/BUILD-API-AND-WEB.md`](../docs/BUILD-API-AND-WEB.md) —
+> hand it to GitHub Copilot to build this layer.
+
 This folder is scaffolding for the **PitchPilot web UI** — not yet implemented.
 
 **Planned:** a **React + Tailwind** (professional theme) single-page app that talks

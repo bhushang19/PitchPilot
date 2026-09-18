@@ -1,5 +1,8 @@
 # API layer (reserved)
 
+> **Build guide:** see [`docs/BUILD-API-AND-WEB.md`](../docs/BUILD-API-AND-WEB.md) —
+> hand it to GitHub Copilot to build this layer.
+
 This folder is scaffolding for the **PitchPilot API** — not yet implemented.
 
 **Planned:** a **FastAPI** service that wraps the `core/` engine and runs the
