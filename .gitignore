@@ -1,0 +1,54 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+*.egg-info/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Node
+node_modules/
+
+# Editor directories
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Environment variables and secrets
+.env
+*.env
+credentials
+secrets.yml
+
+# Output artifacts (do not commit generated files)
+output/
+
+# User-provided background music
+assets/music/*
+
+# Logs
+*.log
+
+# Temporary
+*.tmp
+*.bak
