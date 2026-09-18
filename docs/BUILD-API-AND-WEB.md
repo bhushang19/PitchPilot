@@ -32,7 +32,7 @@ without the interactive prompts.
 
 | Stage | Call | Produces |
 | --- | --- | --- |
-| 1 · Explore | `await core.explorer.explore(config, base_url, password, spec_text)` → `(run_dir, app_slug, script_path)` | `demo-script.md` + `screenshots/` |
+| 1 · Explore | `await core.explorer.explore(config, base_url, spec_text="", username="", password="", mfa_code="")` → `(run_dir, app_slug, script_path)` | `demo-script.md` + `screenshots/` |
 | 2 · Narrate | `core.input_parser.parse_input(script_path)` → parsed; `core.script_generator.generate_talking_script(config, parsed)` → script; `core.script_generator.save_talking_script(script, run_dir)` | `talking-script.json` / `.md` |
 | 3 · Render | `core.video.render_video(config, script["segments"], run_dir, app_slug, dry_run)` | `demo-video.mp4` (+ `clips/`) |
 
@@ -87,7 +87,7 @@ Everything under `api/`. Delete the placeholder `api/README.md` once real code l
 ### Endpoints
 | Method + path | Purpose |
 | --- | --- |
-| `POST /api/jobs` | Start a run. Body: `{ base_url, password, spec_text, make_video: bool, dry_run?: bool, format?: "md" \| "html" }`. Creates a Job, schedules the worker via `BackgroundTasks`, returns `{ job_id }`. |
+| `POST /api/jobs` | Start a run. Body: `{ base_url, spec_text?, username?, password?, mfa_code?, make_video: bool, dry_run?: bool, format?: "md" \| "html" }`. Auth fields and spec are all **optional** (the app may need no login). Creates a Job, schedules the worker via `BackgroundTasks`, returns `{ job_id }`. |
 | `GET /api/jobs/{id}` | Current job snapshot (status, stage, artifacts, error). |
 | `GET /api/jobs/{id}/events` | **SSE stream** (`sse-starlette`) emitting each stage transition + a final `done`/`error` event. Close the stream when the job settles. |
 | `GET /api/jobs/{id}/script` | Return `talking-script.md` text (for the UI to render). |
@@ -150,9 +150,10 @@ Everything under `web/`. Delete the placeholder `web/README.md` once real code l
 ### Screens
 1. **New Run** — a centered card with:
    - App URL (`input`, required, URL validation).
-   - Admin password (`input type=password`).
-   - Spec document (`textarea`; optionally a file picker that reads `.md`/`.txt`
-     into the textarea).
+   - **Optional** sign-in fields (the app may need no login): username/email,
+     password (`input type=password`), and MFA/OTP code.
+   - Spec document (`textarea`, **optional**; optionally a file picker that reads
+     `.md`/`.txt` into the textarea).
    - A segmented toggle / `switch`: **Transcript only** vs **Transcript + Video**.
    - Optional **Dry run** switch (silent preview, no TTS cost) — show only when
      video is selected.

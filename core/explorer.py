@@ -98,20 +98,42 @@ def _make_run_dir(base_url):
     return run_dir, screenshots_dir, app_slug
 
 
-def _build_agent_input(base_url, password, spec_text, screenshots_dir):
-    return (
-        "You are being invoked to generate a presenter demo script for a web app.\n\n"
-        f"BASE URL: {base_url}\n"
-        f"ADMIN PASSWORD: {password}\n"
-        "MFA CODE (mock): 123456\n"
-        f"SCREENSHOTS DIR (absolute path — save every page screenshot here): {screenshots_dir}\n\n"
-        "Follow the phases in your instructions: log in, explore broadly (capturing a "
-        "screenshot of each feature page), then write the narration script to "
-        "demo-script.md via the filesystem MCP.\n\n"
-        "----- SPECIFICATION DOCUMENT (verbatim) -----\n"
-        f"{spec_text}\n"
-        "----- END SPECIFICATION DOCUMENT -----\n"
+def _build_agent_input(base_url, spec_text, username, password, mfa_code, screenshots_dir):
+    lines = [
+        "You are being invoked to generate a presenter demo script for a web app.\n",
+        f"BASE URL: {base_url}",
+    ]
+    creds = []
+    if username:
+        creds.append(f"USERNAME / EMAIL: {username}")
+    if password:
+        creds.append(f"PASSWORD: {password}")
+    if mfa_code:
+        creds.append(f"MFA / OTP CODE: {mfa_code}")
+    if creds:
+        lines.append("SIGN-IN CREDENTIALS (use only if the app shows a login screen):")
+        lines.extend("  " + c for c in creds)
+    else:
+        lines.append(
+            "SIGN-IN CREDENTIALS: none provided — if the app has no login, just proceed; "
+            "if it requires one, report that you cannot sign in."
+        )
+    lines.append(
+        f"SCREENSHOTS DIR (absolute path — save every page screenshot here): {screenshots_dir}\n"
     )
+    lines.append(
+        "Follow the phases in your instructions: get into the app (sign in only if "
+        "needed), explore broadly (capturing a screenshot of each feature page), then "
+        "write the narration script to demo-script.md via the filesystem MCP.\n"
+    )
+    spec = (spec_text or "").strip()
+    if spec:
+        lines.append("----- SPECIFICATION DOCUMENT (verbatim) -----")
+        lines.append(spec)
+        lines.append("----- END SPECIFICATION DOCUMENT -----")
+    else:
+        lines.append("No specification document was provided — infer intent from the UI.")
+    return "\n".join(lines) + "\n"
 
 
 async def _run_agent(config, file_server, automation_server, agent_input):
@@ -144,10 +166,12 @@ async def _run_agent(config, file_server, automation_server, agent_input):
     print(f"\nAgent finished. Final output:\n{result.final_output}")
 
 
-async def explore(config, base_url, password, spec_text):
+async def explore(config, base_url, spec_text="", username="", password="", mfa_code=""):
     """Run the exploration agent; return (run_dir, app_slug, script_path).
 
-    script_path points at demo-script.md and may not exist if the agent failed.
+    Credentials and spec are all optional — the agent signs in only if the app shows a
+    login screen and infers intent from the UI when no spec is given. script_path
+    points at demo-script.md and may not exist if the agent failed.
     """
     if not shutil.which("npm") or not shutil.which("npx"):
         raise RuntimeError("npm/npx not found on PATH. Install Node.js and retry.")
@@ -156,7 +180,9 @@ async def explore(config, base_url, password, spec_text):
         raise RuntimeError("Playwright preflight failed; see messages above.")
 
     run_dir, screenshots_dir, app_slug = _make_run_dir(base_url)
-    agent_input = _build_agent_input(base_url, password, spec_text, screenshots_dir)
+    agent_input = _build_agent_input(
+        base_url, spec_text, username, password, mfa_code, screenshots_dir
+    )
     print(f"\nThis run's output folder: {run_dir}")
 
     print("\nStarting MCP servers (filesystem + Playwright)...\n")

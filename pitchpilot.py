@@ -49,22 +49,27 @@ def _parse_args(argv):
 
 def _prompt_inputs():
     base_url = input("Base URL of the app: ").strip()
-    password = getpass("Admin password (hidden): ")
-    spec_path = input("Path to spec document (.md or .txt): ").strip().strip('"')
-
-    if not base_url or not password or not spec_path:
-        print("Base URL, password, and spec document are all required. Aborting.")
-        sys.exit(1)
-    if not os.path.isfile(spec_path):
-        print(f"Spec document not found: {spec_path}")
+    if not base_url:
+        print("Base URL is required. Aborting.")
         sys.exit(1)
 
-    with open(spec_path, "r", encoding="utf-8") as f:
-        spec_text = f.read()
-    if len(spec_text) > SPEC_SIZE_WARN_CHARS:
-        print(f"[warn] Spec document is {len(spec_text)} chars — this may strain the "
-              f"model context window. Continuing anyway.")
-    return base_url, password, spec_text
+    print("Sign-in credentials (leave blank if the app needs no login):")
+    username = input("  Username / email (optional): ").strip()
+    password = getpass("  Password (optional, hidden): ")
+    mfa_code = input("  MFA / OTP code (optional): ").strip()
+
+    spec_path = input("Path to spec document (.md or .txt, optional): ").strip().strip('"')
+    spec_text = ""
+    if spec_path:
+        if not os.path.isfile(spec_path):
+            print(f"Spec document not found: {spec_path}")
+            sys.exit(1)
+        with open(spec_path, "r", encoding="utf-8") as f:
+            spec_text = f.read()
+        if len(spec_text) > SPEC_SIZE_WARN_CHARS:
+            print(f"[warn] Spec document is {len(spec_text)} chars — this may strain the "
+                  f"model context window. Continuing anyway.")
+    return base_url, username, password, mfa_code, spec_text
 
 
 def _render_html_outputs(script_path, app_slug, fmt):
@@ -112,12 +117,12 @@ def main():
             print("Add them to .env, or re-run with --dry-run for a silent preview.")
             return
 
-    base_url, password, spec_text = _prompt_inputs()
+    base_url, username, password, mfa_code, spec_text = _prompt_inputs()
 
     try:
         # Stage 1 — explore the app.
         run_dir, app_slug, script_path = asyncio.run(
-            explorer.explore(config, base_url, password, spec_text)
+            explorer.explore(config, base_url, spec_text, username, password, mfa_code)
         )
         if not os.path.isfile(script_path):
             print(f"\n[warn] Expected {script_path} was not found. Check agent output above.")
