@@ -96,12 +96,20 @@ export function artifactUrl(id: string, name: string): string {
   return `${API_BASE}/api/jobs/${id}/artifacts/${encodeURIComponent(name)}`
 }
 
+export function jobDownloadUrl(id: string): string {
+  return `${API_BASE}/api/jobs/${encodeURIComponent(id)}/download`
+}
+
 export function jobScreenshotUrl(id: string, name: string): string {
   return `${API_BASE}/api/jobs/${encodeURIComponent(id)}/screenshots/${encodeURIComponent(name)}`
 }
 
 export function historyArtifactUrl(run: HistoryRun, name: string): string {
   return `${API_BASE}/api/history/${encodeURIComponent(run.app_slug)}/${encodeURIComponent(run.run_id)}/artifacts/${encodeURIComponent(name)}`
+}
+
+export function historyDownloadUrl(run: HistoryRun): string {
+  return `${API_BASE}/api/history/${encodeURIComponent(run.app_slug)}/${encodeURIComponent(run.run_id)}/download`
 }
 
 export function historyScreenshotUrl(run: HistoryRun, name: string): string {

@@ -2,7 +2,9 @@
 
 import asyncio
 import os
+import tempfile
 import uuid
+import zipfile
 from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field, HttpUrl
 from sse_starlette.sse import EventSourceResponse
+from starlette.background import BackgroundTask
 
 from core import explorer, video
 from core.config import Config
@@ -219,6 +222,29 @@ def _artifact(job: Job, name: str) -> str:
     return path
 
 
+def _run_archive(run_dir: Path) -> tuple[str, str]:
+    if not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Run not found")
+    archive = tempfile.NamedTemporaryFile(prefix="pitchpilot-", suffix=".zip", delete=False)
+    archive_path = archive.name
+    archive.close()
+    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as bundle:
+        for path in run_dir.rglob("*"):
+            if path.is_file():
+                bundle.write(path, path.relative_to(run_dir))
+    return archive_path, f"pitchpilot-{run_dir.name}.zip"
+
+
+def _archive_response(run_dir: Path) -> FileResponse:
+    archive_path, filename = _run_archive(run_dir)
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=filename,
+        background=BackgroundTask(os.unlink, archive_path),
+    )
+
+
 def _history_run(app_slug: str, run_id: str) -> Path:
     root = (OUTPUT_ROOT / app_slug / run_id).resolve()
     if root.parent.parent != OUTPUT_ROOT.resolve() or not root.is_dir():
@@ -367,6 +393,11 @@ async def get_script(job_id: str):
     return FileResponse(_artifact(_get_job(job_id), "talking-script"), media_type="text/markdown")
 
 
+@app.get("/api/jobs/{job_id}/download")
+async def download_job_artifacts(job_id: str):
+    return _archive_response(Path(_get_job(job_id).run_dir or ""))
+
+
 @app.get("/api/jobs/{job_id}/artifacts/{name}")
 async def get_artifact(job_id: str, name: str):
     allowed = {
@@ -380,6 +411,11 @@ async def get_artifact(job_id: str, name: str):
     if name not in allowed:
         raise HTTPException(status_code=404, detail="Artifact not available")
     return FileResponse(_artifact(_get_job(job_id), name))
+
+
+@app.get("/api/history/{app_slug}/{run_id}/download")
+async def download_history_artifacts(app_slug: str, run_id: str):
+    return _archive_response(_history_run(app_slug, run_id))
 
 
 @app.get("/api/history/{app_slug}/{run_id}/artifacts/{name}")
