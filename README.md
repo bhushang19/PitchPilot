@@ -121,17 +121,17 @@ The React/Vite frontend defaults to `http://127.0.0.1:8000`; override that with
 The UI keeps the primary demo workflow in one place: configure a target, monitor
 the run, then review or download its output.
 
-![PitchPilot new-run browser UI](docs/browser-ui-new-run.png)
+![PitchPilot new-run browser UI](assets/readme/browser-ui-new-run.png)
 
 Past output stays useful after the original job has finished. History lists the
 saved artifacts and provides a detail view for each completed run.
 
-![PitchPilot run-history browser UI](docs/browser-ui-history.png)
+![PitchPilot run-history browser UI](assets/readme/browser-ui-history.png)
 
 The detail view provides the generated HTML script, transcript, artifacts, optional
 video, and a single **Download all** ZIP for the full run.
 
-![PitchPilot saved-run detail browser UI](docs/browser-ui-run-detail.png)
+![PitchPilot saved-run detail browser UI](assets/readme/browser-ui-run-detail.png)
 
 ### Captured-screen example
 
