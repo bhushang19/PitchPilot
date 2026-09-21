@@ -7,11 +7,51 @@ autonomously explores the live app, understands its functional flow, writes a
 presenter-quality script in the product's own language, and narrates it with Azure
 AI Speech over the captured screens - collapsing hours of demo prep into minutes.
 
+## Reshaping a core marketing workflow
+
+Product storytelling is one of marketing's most repeated tasks and one of its most
+fragile. Every launch, campaign, enablement moment, and release note needs a
+current, credible walkthrough of the product - and today that walkthrough is
+assembled by hand. A product marketer books time with an expert, drafts a script,
+records screens, edits, reviews, and re-does it all when the product changes. The
+work is serial, expert-dependent, and stale the moment it ships.
+
+PitchPilot changes the **shape** of that work, not just its speed. Instead of a
+person orchestrating a chain of tools, an agent comprehends the live product and
+produces the finished narrated artifact end to end. The bottleneck - *"who has time
+to walk us through the product, again?"* - is removed.
+
+| Product story workflow | Today, by hand | With PitchPilot |
+| --- | --- | --- |
+| Who's required | PMM + subject-matter expert + editor + reviewer | One person, one URL |
+| Time to first cut | Hours to days, spread across calendars | Minutes, unattended |
+| Cost per demo | Hundreds in specialist and edit time | Cents of Azure compute |
+| Refresh on a product change | Re-shoot and re-edit from scratch | Re-run the pipeline |
+| Localization | A separate project per language | One run, neural voices per language |
+| Quality | Varies with whoever presents | Consistent, on-message every time |
+
+**Projected impact** *(illustrative estimates, not yet measured):*
+
+- **~4-8 hours -> ~5 minutes** to a shareable first cut - roughly a **95%+**
+  reduction in hands-on time.
+- **~$300-600 -> a few cents** in effective cost per demo once specialist and
+  editing time is priced in.
+- **1 source run -> N languages** with native neural voices, turning localization
+  from a project into a parameter.
+- **Always current:** demos regenerate on each release, so the product's story
+  never drifts from the shipped product.
+
+The pattern is deliberately reusable: point it at any surface, get an accurate,
+on-brand narrated story back. The same motion serves product marketing, GTM
+enablement, release storytelling, event content, and support - a template other
+marketing teams can adopt directly for their own products.
+
 ## Why it matters
 
-**The problem:** Great software often demos poorly. Whoever has to present an app -
-an account manager, a founder, a support lead - frequently lacks the domain
-knowledge to walk through it convincingly, so the demo undersells the build.
+**The problem:** Great software often tells its own story poorly. Whoever has to
+present a product - a product marketer, an account manager, a founder, a support
+lead - frequently lacks the domain depth to walk through it convincingly, so the
+demo undersells the build and the launch loses momentum.
 
 **PitchPilot is autopilot for product demos.** Point it at any web app (URL +
 optional spec) and it:
@@ -31,20 +71,22 @@ language.
 
 ## What makes it stand out
 
-- **Impact** - Removes a universal bottleneck: *"can you walk us through the app?"*
-  Every team that ships software needs this, and consistent demos protect the value
-  of what was built.
+- **Changes the work, not just the pace** - It replaces an entire manual chain
+  (expert -> script -> record -> edit -> review) with a single agentic run, so the
+  outcome changes, not merely the speed of one step.
 - **Innovation** - Not another screen recorder. PitchPilot is an **agent that
-  comprehends an unfamiliar app** and generates domain-accurate narration -
+  comprehends an unfamiliar product** and generates domain-accurate narration -
   understanding, not just capture.
 - **Technical depth** - A multi-stage agentic pipeline: autonomous exploration
   (MCP + Playwright), functional-flow reasoning (LLM), script generation, speech
   synthesis, then automated video composition. A real, working end-to-end system.
-- **Scalability** - App- and domain-agnostic by design. One pipeline serves sales
-  enablement, onboarding, release notes, support, accessibility, and localisation
-  (multilingual voices built in).
-- **Azure-native** - Built on Azure OpenAI + Azure AI Speech, with a clean
-  enterprise-adoption and cost-control story.
+- **Reusable across marketing** - Product- and domain-agnostic by design. One
+  pipeline serves product marketing, GTM enablement, release storytelling, events,
+  onboarding, support, accessibility, and localisation (multilingual voices built in).
+- **Microsoft-native** - Built on Azure OpenAI (exploration + narration) and Azure
+  AI Speech (neural voices), so it lands on approved Microsoft services with a clean
+  enterprise-adoption, governance, and cost-control story. The model layer is
+  configurable through Azure AI Foundry rather than locked to one model.
 
 > *"Every company can build impressive software. Almost none can demo it
 > consistently. PitchPilot puts every product demo on autopilot - any app, any
