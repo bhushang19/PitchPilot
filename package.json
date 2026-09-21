@@ -1,0 +1,26 @@
+{
+  "name": "pitchpilot",
+  "version": "1.0.0",
+  "description": "> **Autopilot for product demos — point it at any app, get a narrated walkthrough.**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bhushang19/PitchPilot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bhushang19/PitchPilot/issues"
+  },
+  "homepage": "https://github.com/bhushang19/PitchPilot#readme",
+  "dependencies": {
+    "@executeautomation/playwright-mcp-server": "^1.0.12"
+  }
+}
