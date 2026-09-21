@@ -104,12 +104,13 @@ PitchPilot also includes a local browser experience over the same core engine:
   Events (SSE), with a polling fallback.
 - **Results** provide a full-width HTML presenter-script view, Markdown transcript,
   generated artifacts, screenshot count, and video preview/download when requested.
-- **Run history** reads prior local output folders so completed demos remain easy to
-  inspect after a browser refresh. Each completed run opens in the same tabbed detail
-  view as a fresh result.
+- **Run dashboard** reads prior local output folders and their `run.json` sidecars,
+  so completed demos remain easy to inspect after a browser refresh — with true
+  status, real durations, and summary stats. Each completed run opens in the same
+  tabbed detail view as a fresh result.
 - **Download all** packages the full run folder into one ZIP, including scripts,
-  screenshots, narration clips, and the video when present. Active jobs themselves
-  are in-memory and are lost when the API restarts.
+  screenshots, narration clips, and the video when present. In-progress jobs are held
+  in memory and are lost if the API restarts mid-run; completed runs persist on disk.
 
 The API is a local FastAPI service. It starts one background pipeline task per
 browser run and serves the generated transcript, video, HTML script, and screenshots.
@@ -281,6 +282,69 @@ npm run build
 
 For an API-only check during development, open `http://127.0.0.1:8000/docs` after
 starting Uvicorn. FastAPI exposes the interactive endpoint documentation there.
+
+## Run dashboard and persistence
+
+Every browser run now writes a small `run.json` sidecar next to its artifacts,
+capturing the target URL, output flags, true status (completed / failed), and real
+start/end timing. The **Dashboard** view reads those sidecars to show a live
+operational overview — total runs, success rate, average completion time, and videos
+produced — alongside per-run cards with accurate status badges and durations.
+
+Because the metadata lives on disk with the run, the dashboard stays correct across
+API restarts and browser refreshes. No database, credentials, or extra services are
+involved: the sidecar is plain JSON, and sign-in details are never persisted.
+
+```
+output/<app-slug>/<timestamp>/
+    run.json                # run metadata: url, flags, status, timing (no secrets)
+```
+
+## Product roadmap — bells & whistles
+
+PitchPilot today is a complete demo-generation engine. The roadmap turns it into an
+enterprise **demo operations platform** — where every product's story stays accurate,
+on-brand, and always up to date, automatically.
+
+### Near-term — deepen the operational layer
+
+- **Durable run store (SQLite → Postgres).** Promote the JSON sidecar to a queryable
+  store so the dashboard supports search, filtering, tagging, and trend analytics
+  (runs over time, cost per demo, failure hot-spots) without rescanning disk.
+- **Rich analytics dashboard.** Success-rate trends, average narration length,
+  screenshots per run, spend by app and by month, and drill-downs from any metric to
+  the underlying run.
+- **Human-in-the-loop editing.** Inline transcript and segment editor with re-render
+  of a single scene — tweak one sentence without re-running the whole pipeline.
+- **Templates & brand kits.** Reusable intro/outro, lower-thirds, fonts, colour
+  palettes, and logo watermarking so every demo matches the company's visual identity.
+
+### Mid-term — collaboration and distribution
+
+- **Multi-tenant workspaces with SSO (Entra ID).** Team libraries, role-based access,
+  and per-workspace brand kits and quotas.
+- **Scheduled & CI-triggered refresh.** A GitHub Action or webhook regenerates the
+  demo on every release, so the walkthrough never drifts from the shipped product.
+- **Embeddable share links with viewer analytics.** Hosted player with watch-time,
+  drop-off, and engagement heatmaps to see which features land.
+- **Slack / Teams delivery.** Post the finished video and script to a channel the
+  moment a run completes.
+
+### Long-term — reach and intelligence
+
+- **Localization at scale.** One run fans out to every target language with native
+  neural voices, generating a full localized demo library from a single source.
+- **A/B narration & voice cloning.** Test alternate scripts or tones, and offer a
+  branded, consented voice for a consistent company sound.
+- **Interactive & live-guided demos.** Export to a clickable guided tour, or drive a
+  live product walkthrough with the agent narrating in real time.
+- **Cost governance & FinOps.** Per-run and per-workspace budgets, Azure spend
+  forecasting, and automatic dry-run previews before any billable synthesis.
+
+> The through-line: **every company can build great software, but keeping its story
+> accurate, branded, and current is manual and fragile.** PitchPilot's roadmap makes
+> demo quality a governed, automated, always-fresh capability — not a person's spare
+> afternoon.
 
 ## Layout
 

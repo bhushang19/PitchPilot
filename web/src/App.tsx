@@ -228,7 +228,7 @@ export default function App() {
         </button>
         <div className="header-actions">
           <button className="history-button" onClick={showHistory}>
-            <CircleDot size={15} /> History
+            <CircleDot size={15} /> Dashboard
           </button>
           <button
             className="icon-button"
@@ -515,12 +515,30 @@ function HistoryView({
     (run.duration_seconds
       ? `${Math.floor(run.duration_seconds / 60)}m ${run.duration_seconds % 60}s`
       : "Not available");
+  const total = runs.length;
+  const completed = runs.filter((r) => r.status === "completed").length;
+  const failed = runs.filter((r) => r.status === "failed").length;
+  const active = runs.filter((r) => r.status === "in_progress").length;
+  const videos = runs.filter((r) => "video" in r.artifacts).length;
+  const successRate = total ? Math.round((completed / total) * 100) : 0;
+  const timed = runs.filter(
+    (r) => r.status === "completed" && typeof r.duration_seconds === "number"
+  );
+  const avgSeconds = timed.length
+    ? Math.round(
+        timed.reduce((sum, r) => sum + (r.duration_seconds ?? 0), 0) /
+          timed.length
+      )
+    : 0;
+  const avgLabel = avgSeconds
+    ? `${Math.floor(avgSeconds / 60)}m ${avgSeconds % 60}s`
+    : "--";
   return (
     <section className="mx-auto max-w-5xl pt-8">
       <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
           <div className="eyebrow">
-            <CircleDot size={14} /> RUN HISTORY
+            <CircleDot size={14} /> RUN DASHBOARD
           </div>
           <h1 className="hero-title">Your generated demos.</h1>
           <p className="hero-copy">
@@ -531,6 +549,29 @@ function HistoryView({
           Configure new run <Sparkles size={16} />
         </button>
       </div>
+      {!loading && total > 0 && (
+        <div className="dashboard-stats mb-8">
+          <div className="surface stat-card">
+            <p className="stat-value">{total}</p>
+            <p className="stat-label">Total runs</p>
+          </div>
+          <div className="surface stat-card">
+            <p className="stat-value">{successRate}%</p>
+            <p className="stat-label">
+              Success rate · {completed} done{failed ? ` · ${failed} failed` : ""}
+              {active ? ` · ${active} active` : ""}
+            </p>
+          </div>
+          <div className="surface stat-card">
+            <p className="stat-value">{avgLabel}</p>
+            <p className="stat-label">Avg completion time</p>
+          </div>
+          <div className="surface stat-card">
+            <p className="stat-value">{videos}</p>
+            <p className="stat-label">Videos produced</p>
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="surface p-8">
           <p className="muted">Loading past runs...</p>
@@ -543,17 +584,28 @@ function HistoryView({
       ) : (
         <div className="history-grid">
           {runs.map((run) => {
-            const active = run.status === "in_progress";
+            const isActive = run.status === "in_progress";
+            const isFailed = run.status === "failed";
             const artifactHref = (name: string) =>
-              active && run.job_id
+              isActive && run.job_id
                 ? artifactUrl(run.job_id, name)
                 : historyArtifactUrl(run, name);
             const screenshotHref = (name: string) =>
-              active && run.job_id
+              isActive && run.job_id
                 ? jobScreenshotUrl(run.job_id, name)
                 : historyScreenshotUrl(run, name);
             const screenshotCount =
               run.screenshot_count ?? run.screenshots.length;
+            const badgeClass = isActive
+              ? "status-active"
+              : isFailed
+                ? "status-error"
+                : "status-success";
+            const badgeLabel = isActive
+              ? "In progress"
+              : isFailed
+                ? "Failed"
+                : "Complete";
             return (
               <article
                 className="history-card"
@@ -562,19 +614,20 @@ function HistoryView({
                 <div className="history-card-top">
                   <div>
                     <p className="history-app">{run.app_slug}</p>
+                    {run.base_url && (
+                      <p className="history-url" title={run.base_url}>
+                        {run.base_url}
+                      </p>
+                    )}
                     <p className="history-date">{run.run_timestamp}</p>
                   </div>
-                  <span
-                    className={`status ${active ? "status-active" : "status-success"}`}
-                  >
-                    {active ? "In progress" : "Complete"}
-                  </span>
+                  <span className={`status ${badgeClass}`}>{badgeLabel}</span>
                 </div>
                 <p className="history-id">Run {run.run_id}</p>
                 <p className="history-duration">
                   Total time <strong>{formatDuration(run)}</strong>
                 </p>
-                {!active && (
+                {!isActive && (
                   <button
                     className="secondary-button mt-4"
                     onClick={() => onOpen(run)}
@@ -582,7 +635,7 @@ function HistoryView({
                     View details <ArrowRight size={15} />
                   </button>
                 )}
-                {active && (
+                {isActive && (
                   <div className="history-live">
                     <LoaderCircle className="spin" size={14} />{" "}
                     {run.message || "Working..."}
