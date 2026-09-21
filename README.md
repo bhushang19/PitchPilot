@@ -1,16 +1,16 @@
 # PitchPilot
 
-> **Autopilot for product demos — point it at any app, get a narrated walkthrough.**
+> **Autopilot for product demos - point it at any app, get a narrated walkthrough.**
 
 **PitchPilot turns any web application into a polished, narrated demo video.** It
 autonomously explores the live app, understands its functional flow, writes a
 presenter-quality script in the product's own language, and narrates it with Azure
-AI Speech over the captured screens — collapsing hours of demo prep into minutes.
+AI Speech over the captured screens - collapsing hours of demo prep into minutes.
 
 ## Why it matters
 
-**The problem:** Great software often demos poorly. Whoever has to present an app —
-an account manager, a founder, a support lead — frequently lacks the domain
+**The problem:** Great software often demos poorly. Whoever has to present an app -
+an account manager, a founder, a support lead - frequently lacks the domain
 knowledge to walk through it convincingly, so the demo undersells the build.
 
 **PitchPilot is autopilot for product demos.** Point it at any web app (URL +
@@ -19,39 +19,39 @@ optional spec) and it:
 1. **Explores** the live interface autonomously via an agent (Playwright + MCP),
    capturing every key screen.
 2. **Understands** the functional flow, internalising any specification so it
-   speaks in the customer's terminology — not generic filler.
+   speaks in the customer's terminology - not generic filler.
 3. **Scripts** a presenter-grade walkthrough that any non-expert can confidently
    deliver.
 4. **Produces** a narrated video with Azure AI Text-to-Speech, motion, transitions,
    and music.
 
 The result is a ready-to-share artifact that makes demo quality **consistent
-regardless of who's in the room** — and it scales to any app, any domain, any
+regardless of who's in the room** - and it scales to any app, any domain, any
 language.
 
 ## What makes it stand out
 
-- **Impact** — Removes a universal bottleneck: *"can you walk us through the app?"*
+- **Impact** - Removes a universal bottleneck: *"can you walk us through the app?"*
   Every team that ships software needs this, and consistent demos protect the value
   of what was built.
-- **Innovation** — Not another screen recorder. PitchPilot is an **agent that
-  comprehends an unfamiliar app** and generates domain-accurate narration —
+- **Innovation** - Not another screen recorder. PitchPilot is an **agent that
+  comprehends an unfamiliar app** and generates domain-accurate narration -
   understanding, not just capture.
-- **Technical depth** — A multi-stage agentic pipeline: autonomous exploration
-  (MCP + Playwright) → functional-flow reasoning (LLM) → script generation → speech
-  synthesis → automated video composition. A real, working end-to-end system.
-- **Scalability** — App- and domain-agnostic by design. One pipeline serves sales
+- **Technical depth** - A multi-stage agentic pipeline: autonomous exploration
+  (MCP + Playwright), functional-flow reasoning (LLM), script generation, speech
+  synthesis, then automated video composition. A real, working end-to-end system.
+- **Scalability** - App- and domain-agnostic by design. One pipeline serves sales
   enablement, onboarding, release notes, support, accessibility, and localisation
   (multilingual voices built in).
-- **Azure-native** — Built on Azure OpenAI + Azure AI Speech, with a clean
+- **Azure-native** - Built on Azure OpenAI + Azure AI Speech, with a clean
   enterprise-adoption and cost-control story.
 
 > *"Every company can build impressive software. Almost none can demo it
-> consistently. PitchPilot puts every product demo on autopilot — any app, any
+> consistently. PitchPilot puts every product demo on autopilot - any app, any
 > language, in minutes."*
 >
 > - *"Screen recorders capture what you do. PitchPilot understands what the app is."*
-> - *"Hours of a domain expert's time → a 2-minute video, automatically."*
+> - *"Hours of a domain expert's time turned into a 2-minute video, automatically."*
 > - *"One pipeline, any web app, any domain, any language."*
 
 ## How it works
@@ -104,12 +104,13 @@ PitchPilot also includes a local browser experience over the same core engine:
   Events (SSE), with a polling fallback.
 - **Results** provide a full-width HTML presenter-script view, Markdown transcript,
   generated artifacts, screenshot count, and video preview/download when requested.
-- **Run history** reads prior local output folders so completed demos remain easy to
-  inspect after a browser refresh. Each completed run opens in the same tabbed detail
-  view as a fresh result.
+- **Run dashboard** reads prior local output folders and their `run.json` sidecars,
+  so completed demos remain easy to inspect after a browser refresh, with true
+  status, real durations, and summary stats. Each completed run opens in the same
+  tabbed detail view as a fresh result.
 - **Download all** packages the full run folder into one ZIP, including scripts,
-  screenshots, narration clips, and the video when present. Active jobs themselves
-  are in-memory and are lost when the API restarts.
+  screenshots, narration clips, and the video when present. In-progress jobs are held
+  in memory and are lost if the API restarts mid-run; completed runs persist on disk.
 
 The API is a local FastAPI service. It starts one background pipeline task per
 browser run and serves the generated transcript, video, HTML script, and screenshots.
@@ -171,11 +172,11 @@ video later, so you never re-run the whole pipeline just to render.
 
 ## Pipeline
 
-1. **Explore** — Playwright MCP + an Azure OpenAI agent log in, walk the app, and
+1. **Explore** - Playwright MCP + an Azure OpenAI agent log in, walk the app, and
    write `demo-script.md` + one screenshot per feature.
-2. **Narrate** — Azure OpenAI rewrites the presenter notes into an organic spoken
+2. **Narrate** - Azure OpenAI rewrites the presenter notes into an organic spoken
    script (`talking-script.json` + a readable `talking-script.md`).
-3. **Render** — Azure Text-to-Speech voices each segment; MoviePy composites the
+3. **Render** - Azure Text-to-Speech voices each segment; MoviePy composites the
    narration over the screenshots (Ken Burns, crossfades, optional music) into
    `demo-video.mp4`.
 
@@ -203,7 +204,7 @@ Copy-Item .env.template .env    # then fill in Azure OpenAI + Speech values
 ```
 
 Requires **Node.js** on `PATH` (`npx` launches the Playwright + filesystem MCP
-servers) and **Python 3.11–3.13**. ffmpeg is provided by the bundled
+servers) and **Python 3.11-3.13**. ffmpeg is provided by the bundled
 `imageio-ffmpeg`, so no separate install is needed.
 
 ## Run locally
@@ -282,11 +283,76 @@ npm run build
 For an API-only check during development, open `http://127.0.0.1:8000/docs` after
 starting Uvicorn. FastAPI exposes the interactive endpoint documentation there.
 
+## Run dashboard and persistence
+
+Every browser run now writes a small `run.json` sidecar next to its artifacts,
+capturing the target URL, output flags, true status (completed / failed), and real
+start/end timing. The **Dashboard** view reads those sidecars to show a live
+operational overview (total runs, success rate, average completion time, and videos
+produced) alongside per-run cards with accurate status badges and durations.
+
+Because the metadata lives on disk with the run, the dashboard stays correct across
+API restarts and browser refreshes. No database, credentials, or extra services are
+involved: the sidecar is plain JSON, and sign-in details are never persisted.
+
+```
+output/<app-slug>/<timestamp>/
+    run.json                # run metadata: url, flags, status, timing (no secrets)
+```
+
+## Product roadmap
+
+PitchPilot today is a complete demo-generation engine. The roadmap turns it into an
+enterprise **demo operations platform**, so every product's story stays accurate,
+on-brand, and up to date automatically. Each item below maps to a concrete enterprise
+outcome: faster time to value, lower cost per demo, and consistent quality at scale.
+
+### Near-term: deepen the operational layer
+
+- **Durable run store (SQLite, then Postgres).** Promote the JSON sidecar to a
+  queryable store so the dashboard supports search, filtering, tagging, and trend
+  analytics (runs over time, cost per demo, failure hot-spots) without rescanning disk.
+- **Rich analytics dashboard.** Success-rate trends, average narration length,
+  screenshots per run, spend by app and by month, and drill-downs from any metric to
+  the underlying run.
+- **Human-in-the-loop editing.** Inline transcript and segment editor with re-render
+  of a single scene, so a team can tweak one sentence without re-running the whole
+  pipeline.
+- **Templates and brand kits.** Reusable intro and outro, lower-thirds, fonts, colour
+  palettes, and logo watermarking so every demo matches the company's visual identity.
+
+### Mid-term: collaboration and distribution
+
+- **Multi-tenant workspaces with SSO (Microsoft Entra ID).** Team libraries,
+  role-based access, and per-workspace brand kits and quotas.
+- **Scheduled and CI-triggered refresh.** A GitHub Action or webhook regenerates the
+  demo on every release, so the walkthrough never drifts from the shipped product.
+- **Embeddable share links with viewer analytics.** Hosted player with watch-time,
+  drop-off, and engagement heatmaps to see which features land.
+- **Slack and Teams delivery.** Post the finished video and script to a channel the
+  moment a run completes.
+
+### Long-term: reach and intelligence
+
+- **Localization at scale.** One run fans out to every target language with native
+  neural voices, generating a full localized demo library from a single source.
+- **A/B narration and voice branding.** Test alternate scripts or tones, and offer a
+  branded, consented voice for a consistent company sound.
+- **Interactive and live-guided demos.** Export to a clickable guided tour, or drive a
+  live product walkthrough with the agent narrating in real time.
+- **Cost governance and FinOps.** Per-run and per-workspace budgets, Azure spend
+  forecasting, and automatic dry-run previews before any billable synthesis.
+
+> The through-line: every company can build great software, but keeping its story
+> accurate, branded, and current is manual and fragile. PitchPilot's roadmap makes
+> demo quality a governed, automated, always-fresh capability rather than a person's
+> spare afternoon.
+
 ## Layout
 
 ```
 pitchpilot.py     # single entry point (flags above)
-core/             # the engine — explorer, narration, TTS, compositor
+core/             # the engine - explorer, narration, TTS, compositor
 assets/music/     # optional royalty-free background music
 api/              # FastAPI service, in-memory jobs, SSE progress, artifact routes
 web/              # React + Vite browser UI for creating and reviewing runs

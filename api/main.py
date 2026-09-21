@@ -1,6 +1,7 @@
 """FastAPI service for the PitchPilot pipeline."""
 
 import asyncio
+import json
 import os
 import tempfile
 import uuid
@@ -108,6 +109,64 @@ def _app_slug(base_url: str) -> str:
     return slug.split(".")[0] or "app"
 
 
+SIDECAR_NAME = "run.json"
+
+
+def _duration_label(seconds: int) -> str:
+    minutes, remainder = divmod(max(0, seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m {remainder}s" if hours else f"{minutes}m {remainder}s"
+
+
+def _write_sidecar(job: Job, request: JobRequest, *, ended: bool = False) -> None:
+    """Persist run metadata next to the artifacts. Never stores credentials."""
+    if not job.run_dir:
+        return
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    data: dict[str, Any] = {
+        "job_id": job.id,
+        "base_url": job.base_url,
+        "app_slug": job.app_slug,
+        "make_video": job.make_video,
+        "dry_run": job.dry_run,
+        "format": request.format,
+        "spec_present": bool(request.spec_text.strip()),
+        "status": job.status,
+        "stage": job.stage,
+        "error": job.error,
+        "started_at": job.started_at,
+        "ended_at": now if ended else None,
+        "run_timestamp": job.run_timestamp,
+    }
+    if ended:
+        try:
+            started = datetime.fromisoformat(job.started_at)
+            data["duration_seconds"] = max(0, int((datetime.fromisoformat(now) - started).total_seconds()))
+        except ValueError:
+            data["duration_seconds"] = None
+    try:
+        path = _sidecar_path(job.run_dir)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _sidecar_path(run_dir: str) -> Path:
+    return Path(run_dir) / SIDECAR_NAME
+
+
+def _read_sidecar(run_dir: Path) -> dict[str, Any] | None:
+    path = run_dir / SIDECAR_NAME
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
 def _refresh_live_output(job: Job) -> None:
     if job.run_dir:
         return
@@ -163,6 +222,7 @@ async def _worker(job: Job, request: JobRequest) -> None:
         job.run_timestamp = datetime.fromtimestamp(
             os.path.getctime(run_dir), tz=datetime.now().astimezone().tzinfo
         ).strftime("%Y-%m-%d %H:%M:%S %Z")
+        _write_sidecar(job, request)
         if not os.path.isfile(script_path):
             raise RuntimeError(f"Expected demo script was not created: {script_path}")
         job.artifacts["demo-script"] = script_path
@@ -197,11 +257,13 @@ async def _worker(job: Job, request: JobRequest) -> None:
         job.progress = 100
         job.status = "completed"
         job.stage = "completed"
+        _write_sidecar(job, request, ended=True)
         await _push(job, "done", "Run completed")
     except Exception as exc:
         job.status = "failed"
         job.stage = "failed"
         job.error = str(exc)
+        _write_sidecar(job, request, ended=True)
         await _push(job, "error", job.error)
     finally:
         if heartbeat_task:
@@ -285,10 +347,7 @@ def _duration(run_dir: Path, started_at: float | None = None) -> tuple[int, str]
         if path.is_file():
             latest = max(latest, path.stat().st_mtime)
     seconds = max(0, int(latest - started))
-    minutes, remainder = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    label = f"{hours}h {minutes}m {remainder}s" if hours else f"{minutes}m {remainder}s"
-    return seconds, label
+    return seconds, _duration_label(seconds)
 
 
 @app.get("/api/history")
@@ -302,6 +361,7 @@ async def get_history():
                 "app_slug": job.app_slug or _app_slug(job.base_url),
                 "run_id": job.id,
                 "run_timestamp": job.run_timestamp or job.started_at,
+                "base_url": job.base_url,
                 "artifacts": snapshot["artifacts"],
                 "screenshots": snapshot["screenshots"][:6],
                 "screenshot_count": len(snapshot["screenshots"]),
@@ -324,20 +384,42 @@ async def get_history():
             screenshots = _run_screenshots(run_dir)
             if not artifacts and not screenshots:
                 continue
+            sidecar = _read_sidecar(run_dir)
             completed = "talking-script" in artifacts
+            status = "completed" if completed else "in_progress"
+            stage = "completed" if completed else "exploring"
+            progress = 100 if completed else 10
+            message = (
+                "Run completed" if completed
+                else "Partial output found; exploration may still be running or was interrupted"
+            )
             duration_seconds, duration_label = _duration(run_dir)
+            base_url = None
+            if sidecar:
+                base_url = sidecar.get("base_url") or None
+                sc_status = sidecar.get("status")
+                if sc_status == "failed":
+                    status, stage, progress = "failed", "failed", 100
+                    message = sidecar.get("error") or "Run failed"
+                elif sc_status == "completed":
+                    status, stage, progress, completed = "completed", "completed", 100, True
+                    message = "Run completed"
+                if isinstance(sidecar.get("duration_seconds"), int):
+                    duration_seconds = sidecar["duration_seconds"]
+                    duration_label = _duration_label(duration_seconds)
             history.append({
                 "app_slug": app_dir.name,
                 "run_id": run_dir.name,
-                "run_timestamp": datetime.fromtimestamp(
+                "run_timestamp": (sidecar or {}).get("run_timestamp") or datetime.fromtimestamp(
                     run_dir.stat().st_ctime, tz=datetime.now().astimezone().tzinfo
                 ).strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "base_url": base_url,
                 "artifacts": artifacts,
                 "screenshots": screenshots[:6],
-                "status": "completed" if completed else "in_progress",
-                "stage": "completed" if completed else "exploring",
-                "progress": 100 if completed else 10,
-                "message": "Run completed" if completed else "Partial output found; exploration may still be running or was interrupted",
+                "status": status,
+                "stage": stage,
+                "progress": progress,
+                "message": message,
                 "duration_seconds": duration_seconds,
                 "duration_label": duration_label,
                 "screenshot_count": len(screenshots),

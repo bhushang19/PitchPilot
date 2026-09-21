@@ -31,9 +31,10 @@ export type HistoryRun = {
   app_slug: string
   run_id: string
   run_timestamp: string
+  base_url?: string | null
   artifacts: Record<string, string>
   screenshots: string[]
-  status: "completed" | "in_progress"
+  status: "completed" | "in_progress" | "failed"
   stage?: JobSnapshot["stage"]
   progress?: number
   message?: string
