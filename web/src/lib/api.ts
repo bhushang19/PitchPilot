@@ -6,6 +6,8 @@ export type JobSnapshot = {
   stage: "queued" | "exploring" | "narrating" | "rendering" | "completed" | "failed"
   make_video: boolean
   dry_run: boolean
+  persona_id?: string
+  persona_name?: string
   artifacts: Record<string, string>
   error: string | null
   screenshots?: string[]
@@ -14,6 +16,14 @@ export type JobSnapshot = {
   heartbeat?: number
   started_at?: string
   run_timestamp?: string | null
+}
+
+export type Persona = {
+  id: string
+  name: string
+  description: string
+  instructions: string
+  is_default: boolean
 }
 
 export type CreateJobPayload = {
@@ -25,6 +35,7 @@ export type CreateJobPayload = {
   make_video: boolean
   dry_run: boolean
   format: "md" | "html"
+  persona_id: string
 }
 
 export type HistoryRun = {
@@ -39,6 +50,8 @@ export type HistoryRun = {
   progress?: number
   message?: string
   job_id?: string
+  persona_id?: string
+  persona_name?: string
   duration_seconds?: number
   duration_label?: string
   screenshot_count?: number
@@ -80,6 +93,30 @@ export async function getScriptText(id: string): Promise<string> {
 export async function getHistory(): Promise<HistoryRun[]> {
   const response = await fetch(`${API_BASE}/api/history`)
   if (!response.ok) throw new Error("Could not load run history")
+  return response.json()
+}
+
+export async function getPersonas(): Promise<Persona[]> {
+  const response = await fetch(`${API_BASE}/api/personas`)
+  if (!response.ok) throw new Error("Could not load personas")
+  return response.json()
+}
+
+export async function updatePersona(id: string, instructions: string): Promise<Persona> {
+  const response = await fetch(`${API_BASE}/api/personas/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instructions }),
+  })
+  if (!response.ok) throw new Error("Could not save persona")
+  return response.json()
+}
+
+export async function resetPersona(id: string): Promise<Persona> {
+  const response = await fetch(`${API_BASE}/api/personas/${encodeURIComponent(id)}/reset`, {
+    method: "POST",
+  })
+  if (!response.ok) throw new Error("Could not reset persona")
   return response.json()
 }
 

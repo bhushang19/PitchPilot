@@ -10,10 +10,13 @@ import {
   LoaderCircle,
   Moon,
   Play,
+  RotateCcw,
+  Save,
   ShieldCheck,
   Sparkles,
   Sun,
   Upload,
+  UsersRound,
   Video,
   WandSparkles,
 } from "lucide-react";
@@ -24,20 +27,24 @@ import {
   getHistory,
   getHistoryScript,
   getJob,
+  getPersonas,
   getScriptText,
   historyArtifactUrl,
   historyDownloadUrl,
   historyScreenshotUrl,
   jobDownloadUrl,
   jobScreenshotUrl,
+  resetPersona,
   subscribeToJob,
+  updatePersona,
   videoUrl,
   type CreateJobPayload,
   type HistoryRun,
   type JobSnapshot,
+  type Persona,
 } from "./lib/api";
 
-type View = "new" | "progress" | "result" | "history" | "history-detail";
+type View = "new" | "progress" | "result" | "history" | "history-detail" | "config";
 const steps = ["exploring", "narrating", "rendering"] as const;
 
 const initialForm: CreateJobPayload = {
@@ -49,6 +56,7 @@ const initialForm: CreateJobPayload = {
   make_video: true,
   dry_run: false,
   format: "md",
+  persona_id: "general",
 };
 
 export default function App() {
@@ -62,6 +70,7 @@ export default function App() {
   const [historyScript, setHistoryScript] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [dark, setDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
@@ -70,6 +79,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  useEffect(() => {
+    getPersonas()
+      .then(setPersonas)
+      .catch(() => setPersonas([]));
+  }, []);
 
   useEffect(() => () => unsubscribe.current?.(), []);
 
@@ -206,6 +221,10 @@ export default function App() {
     }
   }
 
+  function showConfig() {
+    setView("config");
+  }
+
   const settled = job?.status === "completed" || job?.status === "failed";
 
   return (
@@ -227,6 +246,9 @@ export default function App() {
           </span>
         </button>
         <div className="header-actions">
+          <button className="history-button" onClick={showConfig}>
+            <UsersRound size={15} /> Personas
+          </button>
           <button className="history-button" onClick={showHistory}>
             <CircleDot size={15} /> Dashboard
           </button>
@@ -272,6 +294,8 @@ export default function App() {
             update={update}
             onSubmit={startRun}
             submitting={submitting}
+            personas={personas}
+            onManagePersonas={showConfig}
           />
         )}
         {view === "progress" && job && (
@@ -296,6 +320,13 @@ export default function App() {
             onNew={startAnother}
           />
         )}
+        {view === "config" && (
+          <PersonasConfig
+            personas={personas}
+            onChange={setPersonas}
+            onNew={startAnother}
+          />
+        )}
         {view === "progress" && settled && job?.status === "failed" && (
           <button
             className="mt-6 text-sm font-semibold text-indigo-600"
@@ -314,6 +345,8 @@ function NewRun({
   update,
   onSubmit,
   submitting,
+  personas,
+  onManagePersonas,
 }: {
   form: CreateJobPayload;
   update: <K extends keyof CreateJobPayload>(
@@ -322,8 +355,11 @@ function NewRun({
   ) => void;
   onSubmit: (event: React.FormEvent) => void;
   submitting: boolean;
+  personas: Persona[];
+  onManagePersonas: () => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const activePersona = personas.find((p) => p.id === form.persona_id);
   function readSpec(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -374,6 +410,35 @@ function NewRun({
             value={form.base_url}
             onChange={(event) => update("base_url", event.target.value)}
           />
+        </label>
+        <div className="my-7 border-t border-slate-200 dark:border-slate-800" />
+        <label className="field-label">
+          <span className="flex items-center justify-between">
+            <span>
+              Target persona <span className="optional">Optional</span>
+            </span>
+            <button
+              type="button"
+              className="text-xs font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+              onClick={onManagePersonas}
+            >
+              Manage personas
+            </button>
+          </span>
+          <select
+            className="field"
+            value={form.persona_id}
+            onChange={(event) => update("persona_id", event.target.value)}
+          >
+            {personas.map((persona) => (
+              <option key={persona.id} value={persona.id}>
+                {persona.name}
+              </option>
+            ))}
+          </select>
+          {activePersona && (
+            <p className="muted mt-2">{activePersona.description}</p>
+          )}
         </label>
         <div className="my-7 border-t border-slate-200 dark:border-slate-800" />
         <p className="field-label mb-3">
@@ -488,6 +553,149 @@ function NewRun({
           )}
         </button>
       </form>
+    </section>
+  );
+}
+
+function PersonasConfig({
+  personas,
+  onChange,
+  onNew,
+}: {
+  personas: Persona[];
+  onChange: (personas: Persona[]) => void;
+  onNew: () => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDrafts(
+      Object.fromEntries(personas.map((p) => [p.id, p.instructions])),
+    );
+  }, [personas]);
+
+  function replacePersona(updated: Persona) {
+    onChange(personas.map((p) => (p.id === updated.id ? updated : p)));
+  }
+
+  async function save(persona: Persona) {
+    setBusy(persona.id);
+    try {
+      const updated = await updatePersona(persona.id, drafts[persona.id] ?? "");
+      replacePersona(updated);
+      toast.success(`${persona.name} instructions saved`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not save persona",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function reset(persona: Persona) {
+    setBusy(persona.id);
+    try {
+      const updated = await resetPersona(persona.id);
+      replacePersona(updated);
+      setDrafts((current) => ({
+        ...current,
+        [persona.id]: updated.instructions,
+      }));
+      toast.success(`${persona.name} reset to default`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not reset persona",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="mx-auto max-w-4xl pt-8">
+      <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div>
+          <div className="eyebrow">
+            <UsersRound size={14} /> PERSONA CONFIGURATION
+          </div>
+          <h1 className="hero-title">Tune how each audience is pitched.</h1>
+          <p className="hero-copy">
+            These instructions steer both how the pilot explores the app and how
+            it writes the story for that persona. Edit them once and every run
+            targeting that persona uses your version.
+          </p>
+        </div>
+        <button className="primary-button" onClick={onNew}>
+          Configure new run <Sparkles size={16} />
+        </button>
+      </div>
+      <div className="grid gap-5">
+        {personas.map((persona) => {
+          const draft = drafts[persona.id] ?? "";
+          const dirty = draft !== persona.instructions;
+          const isGeneral = persona.id === "general";
+          return (
+            <div key={persona.id} className="surface p-6">
+              <div className="mb-3 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="section-title flex items-center gap-2">
+                    {persona.name}
+                    {!persona.is_default && (
+                      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+                        Edited
+                      </span>
+                    )}
+                  </h2>
+                  <p className="muted mt-1">{persona.description}</p>
+                </div>
+              </div>
+              <textarea
+                className="field min-h-40 resize-y"
+                value={draft}
+                placeholder={
+                  isGeneral
+                    ? "Leave empty for balanced, audience-agnostic narration."
+                    : "Describe what this audience cares about..."
+                }
+                onChange={(event) =>
+                  setDrafts((current) => ({
+                    ...current,
+                    [persona.id]: event.target.value,
+                  }))
+                }
+              />
+              <div className="mt-4 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={busy === persona.id || persona.is_default}
+                  onClick={() => reset(persona)}
+                >
+                  <RotateCcw size={15} /> Reset to default
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={busy === persona.id || !dirty}
+                  onClick={() => save(persona)}
+                >
+                  {busy === persona.id ? (
+                    <>
+                      <LoaderCircle className="spin" size={15} /> Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={15} /> Save
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -620,6 +828,11 @@ function HistoryView({
                       </p>
                     )}
                     <p className="history-date">{run.run_timestamp}</p>
+                    {run.persona_id && run.persona_id !== "general" && (
+                      <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+                        <UsersRound size={11} /> {run.persona_name}
+                      </span>
+                    )}
                   </div>
                   <span className={`status ${badgeClass}`}>{badgeLabel}</span>
                 </div>
@@ -1096,6 +1309,11 @@ function Result({
             Open the generated presenter document, read the transcript, or
             download the source artifacts.
           </p>
+          {job.persona_id && job.persona_id !== "general" && (
+            <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
+              <UsersRound size={13} /> Targeted for {job.persona_name}
+            </span>
+          )}
         </div>
         <div className="flex gap-3">
           <a

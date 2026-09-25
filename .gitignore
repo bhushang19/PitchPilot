@@ -43,6 +43,9 @@ secrets.yml
 # Output artifacts (do not commit generated files)
 output/
 
+# User persona edits (runtime state; presets ship as code defaults)
+config/personas.json
+
 # User-provided background music
 assets/music/*
 
@@ -52,3 +55,6 @@ assets/music/*
 # Temporary
 *.tmp
 *.bak
+
+package-lock.json
+package.json

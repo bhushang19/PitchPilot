@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import sys
 import tempfile
 import uuid
 import zipfile
@@ -21,6 +22,7 @@ from sse_starlette.sse import EventSourceResponse
 from starlette.background import BackgroundTask
 
 from core import explorer, video
+from core import personas
 from core.config import Config
 from core.input_parser import parse_input
 from core.render_html import render_html
@@ -41,6 +43,8 @@ class Job:
     stage: str = "queued"
     run_dir: str | None = None
     app_slug: str | None = None
+    persona_id: str = "general"
+    persona_name: str = "General / No persona"
     artifacts: dict[str, str] = field(default_factory=dict)
     error: str | None = None
     progress: int = 0
@@ -60,6 +64,7 @@ class JobRequest(BaseModel):
     make_video: bool = False
     dry_run: bool = False
     format: Literal["md", "html"] = "md"
+    persona_id: str = "general"
 
 
 jobs: dict[str, Job] = {}
@@ -90,6 +95,8 @@ def _snapshot(job: Job) -> dict[str, Any]:
         "stage": job.stage,
         "make_video": job.make_video,
         "dry_run": job.dry_run,
+        "persona_id": job.persona_id,
+        "persona_name": job.persona_name,
         "artifacts": {
             name: path.replace(os.sep, "/") for name, path in job.artifacts.items()
         },
@@ -130,6 +137,8 @@ def _write_sidecar(job: Job, request: JobRequest, *, ended: bool = False) -> Non
         "make_video": job.make_video,
         "dry_run": job.dry_run,
         "format": request.format,
+        "persona_id": job.persona_id,
+        "persona_name": job.persona_name,
         "spec_present": bool(request.spec_text.strip()),
         "status": job.status,
         "stage": job.stage,
@@ -193,6 +202,25 @@ async def _push(job: Job, event: str, message: str | None = None) -> None:
     await job.events.put({"event": event, "data": payload})
 
 
+def _explore_on_proactor(*args):
+    """Run explorer.explore on a fresh ProactorEventLoop (Windows subprocess support)."""
+    loop = asyncio.ProactorEventLoop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(explorer.explore(*args))
+    finally:
+        loop.close()
+        asyncio.set_event_loop(None)
+
+
+async def _explore(*args):
+    """Explore the app; on Windows offload to a Proactor loop so MCP subprocesses spawn
+    even when uvicorn --reload gives this process a SelectorEventLoop."""
+    if sys.platform == "win32":
+        return await asyncio.to_thread(_explore_on_proactor, *args)
+    return await explorer.explore(*args)
+
+
 async def _worker(job: Job, request: JobRequest) -> None:
     heartbeat_task = None
     try:
@@ -209,13 +237,17 @@ async def _worker(job: Job, request: JobRequest) -> None:
                 await _push(job, "heartbeat", "Still exploring pages..." if job.stage == "exploring" else job.message)
 
         heartbeat_task = asyncio.create_task(keep_alive())
-        run_dir, app_slug, script_path = await explorer.explore(
+        persona = personas.get_persona(request.persona_id) or personas.get_persona("general")
+        job.persona_id = persona["id"]
+        job.persona_name = persona["name"]
+        run_dir, app_slug, script_path = await _explore(
             CONFIG,
             str(request.base_url),
             request.spec_text,
             request.username,
             request.password,
             request.mfa_code,
+            persona,
         )
         job.run_dir = run_dir
         job.app_slug = app_slug
@@ -239,7 +271,7 @@ async def _worker(job: Job, request: JobRequest) -> None:
         parsed = parse_input(script_path)
         if not parsed.segments:
             raise RuntimeError("No feature segments found in the demo script.")
-        script = generate_talking_script(CONFIG, parsed)
+        script = generate_talking_script(CONFIG, parsed, persona)
         json_path, md_path = save_talking_script(script, run_dir)
         job.artifacts["talking-script-json"] = json_path
         job.artifacts["talking-script"] = md_path
@@ -369,6 +401,8 @@ async def get_history():
                 "job_id": job.id,
                 "stage": job.stage,
                 "progress": job.progress,
+                "persona_id": job.persona_id,
+                "persona_name": job.persona_name,
                 "message": "Starting the run..." if job.stage == "queued" else "Working...",
                 "duration_seconds": max(0, int((datetime.now().astimezone() - datetime.fromisoformat(job.started_at)).total_seconds())),
             })
@@ -423,8 +457,35 @@ async def get_history():
                 "duration_seconds": duration_seconds,
                 "duration_label": duration_label,
                 "screenshot_count": len(screenshots),
+                "persona_id": (sidecar or {}).get("persona_id") or "general",
+                "persona_name": (sidecar or {}).get("persona_name") or "General / No persona",
             })
     return sorted(history, key=lambda item: item["run_id"], reverse=True)
+
+
+class PersonaUpdate(BaseModel):
+    instructions: str = ""
+
+
+@app.get("/api/personas")
+async def list_personas():
+    return personas.load_personas()
+
+
+@app.put("/api/personas/{persona_id}")
+async def update_persona(persona_id: str, update: PersonaUpdate):
+    try:
+        return personas.save_persona(persona_id, update.instructions)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+
+@app.post("/api/personas/{persona_id}/reset")
+async def reset_persona(persona_id: str):
+    try:
+        return personas.reset_persona(persona_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Persona not found")
 
 
 @app.post("/api/jobs", status_code=202)
@@ -445,6 +506,9 @@ async def create_job(request: JobRequest):
 
     job_id = str(uuid.uuid4())
     job = Job(job_id, request.make_video, request.dry_run, str(request.base_url))
+    resolved = personas.get_persona(request.persona_id) or personas.get_persona("general")
+    job.persona_id = resolved["id"]
+    job.persona_name = resolved["name"]
     jobs[job_id] = job
     asyncio.create_task(_worker(job, request))
     return {"job_id": job_id}

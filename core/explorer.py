@@ -87,18 +87,20 @@ def _slugify(text, fallback="app"):
     return slug or fallback
 
 
-def _make_run_dir(base_url):
+def _make_run_dir(base_url, persona_id="general"):
     """Create output/<app-slug>/<timestamp>/ (+ screenshots) and return the paths."""
     host = urlparse(base_url).hostname or ""
     app_slug = _slugify(host.split(".")[0])
     run_id = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    if persona_id and persona_id != "general":
+        run_id = f"{run_id}__{_slugify(persona_id)}"
     run_dir = os.path.join(_OUTPUT_DIR, app_slug, run_id)
     screenshots_dir = os.path.join(run_dir, "screenshots")
     os.makedirs(screenshots_dir, exist_ok=True)
     return run_dir, screenshots_dir, app_slug
 
 
-def _build_agent_input(base_url, spec_text, username, password, mfa_code, screenshots_dir):
+def _build_agent_input(base_url, spec_text, username, password, mfa_code, screenshots_dir, persona=None):
     lines = [
         "You are being invoked to generate a presenter demo script for a web app.\n",
         f"BASE URL: {base_url}",
@@ -126,6 +128,17 @@ def _build_agent_input(base_url, spec_text, username, password, mfa_code, screen
         "needed), explore broadly (capturing a screenshot of each feature page), then "
         "write the narration script to demo-script.md via the filesystem MCP.\n"
     )
+    persona_instructions = ((persona or {}).get("instructions") or "").strip()
+    if persona_instructions:
+        lines.append(
+            f"----- TARGET AUDIENCE LENS: {persona.get('name', '')} -----"
+        )
+        lines.append(
+            "Explore and prioritise the app through this lens so the resulting script "
+            "has the depth this audience cares about:"
+        )
+        lines.append(persona_instructions)
+        lines.append("----- END TARGET AUDIENCE LENS -----")
     spec = (spec_text or "").strip()
     if spec:
         lines.append("----- SPECIFICATION DOCUMENT (verbatim) -----")
@@ -166,12 +179,13 @@ async def _run_agent(config, file_server, automation_server, agent_input):
     print(f"\nAgent finished. Final output:\n{result.final_output}")
 
 
-async def explore(config, base_url, spec_text="", username="", password="", mfa_code=""):
+async def explore(config, base_url, spec_text="", username="", password="", mfa_code="", persona=None):
     """Run the exploration agent; return (run_dir, app_slug, script_path).
 
-    Credentials and spec are all optional — the agent signs in only if the app shows a
-    login screen and infers intent from the UI when no spec is given. script_path
-    points at demo-script.md and may not exist if the agent failed.
+    Credentials, spec, and persona are all optional — the agent signs in only if the
+    app shows a login screen and infers intent from the UI when no spec is given. When
+    a persona is provided its lens steers what the agent digs into. script_path points
+    at demo-script.md and may not exist if the agent failed.
     """
     if not shutil.which("npm") or not shutil.which("npx"):
         raise RuntimeError("npm/npx not found on PATH. Install Node.js and retry.")
@@ -179,9 +193,10 @@ async def explore(config, base_url, spec_text="", username="", password="", mfa_
     if not _ensure_playwright_chromium():
         raise RuntimeError("Playwright preflight failed; see messages above.")
 
-    run_dir, screenshots_dir, app_slug = _make_run_dir(base_url)
+    persona_id = (persona or {}).get("id", "general")
+    run_dir, screenshots_dir, app_slug = _make_run_dir(base_url, persona_id)
     agent_input = _build_agent_input(
-        base_url, spec_text, username, password, mfa_code, screenshots_dir
+        base_url, spec_text, username, password, mfa_code, screenshots_dir, persona
     )
     print(f"\nThis run's output folder: {run_dir}")
 
