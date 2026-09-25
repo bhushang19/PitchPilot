@@ -12,9 +12,10 @@ import os
 
 from openai import AzureOpenAI
 
+from core.personas import STORYTELLING_FRAMEWORK
+
 _SYSTEM_PROMPT = (
-    "You are a scriptwriter for a professional product demo video narrated by a "
-    "talking avatar. You turn terse presenter notes into a warm, confident, "
+    "You are a scriptwriter for a professional product demo video. You turn terse presenter notes into a warm, confident, "
     "spoken-word script. Write the way a skilled presenter actually speaks: "
     "first person plural ('let's', 'you'll see'), short sentences, natural "
     "connective transitions between sections, no bullet points, no markdown, no "
@@ -22,6 +23,21 @@ _SYSTEM_PROMPT = (
     "feature's narration roughly the length of the source note (about 40-90 "
     "words). Do not invent features that are not described."
 )
+
+
+def _build_system_prompt(persona=None):
+    """Compose the system prompt: base voice + storytelling scaffold + persona lens."""
+    parts = [_SYSTEM_PROMPT, "", STORYTELLING_FRAMEWORK]
+    persona_instructions = ((persona or {}).get("instructions") or "").strip()
+    if persona_instructions:
+        parts.append("")
+        parts.append(f"TARGET AUDIENCE: {persona.get('name', '')}.")
+        parts.append(
+            "Tune the narration for this audience — emphasise what they care about and "
+            "frame every benefit through their priorities:"
+        )
+        parts.append(persona_instructions)
+    return "\n".join(parts)
 
 
 def _build_user_prompt(parsed):
@@ -73,14 +89,14 @@ def _strip_code_fences(text):
     return text.strip()
 
 
-def _call_model(config, parsed):
+def _call_model(config, parsed, persona=None):
     client = AzureOpenAI(
         api_key=config.openai_api_key,
         azure_endpoint=config.openai_endpoint,
         api_version=config.openai_api_version,
     )
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _build_system_prompt(persona)},
         {"role": "user", "content": _build_user_prompt(parsed)},
     ]
 
@@ -97,9 +113,9 @@ def _call_model(config, parsed):
     return json.loads(_strip_code_fences(content))
 
 
-def generate_talking_script(config, parsed):
+def generate_talking_script(config, parsed, persona=None):
     """Return a talking-script dict combining AI narration with segment metadata."""
-    ai = _call_model(config, parsed)
+    ai = _call_model(config, parsed, persona)
 
     spoken_by_order = {
         int(s["order"]): (s.get("spoken_text") or "").strip()
