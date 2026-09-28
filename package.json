@@ -21,6 +21,7 @@
   },
   "homepage": "https://github.com/bhushang19/PitchPilot#readme",
   "dependencies": {
-    "@executeautomation/playwright-mcp-server": "^1.0.12"
+    "@executeautomation/playwright-mcp-server": "^1.0.12",
+    "@playwright/mcp": "^0.0.82"
   }
 }

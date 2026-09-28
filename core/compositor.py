@@ -18,7 +18,9 @@ from moviepy import (
     CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
+    VideoFileClip,
     afx,
+    concatenate_videoclips,
     vfx,
 )
 
@@ -88,8 +90,37 @@ def _title_card_array(text, w, h):
     return np.array(img)
 
 
+def _video_background(clip_path, duration, w, h):
+    """Real feature footage sized to the frame, reconciled to the narration length.
+
+    Longer footage is trimmed; shorter footage holds on its last frame so the
+    narration is always heard in full over live action.
+    """
+    base = VideoFileClip(clip_path)
+    if base.audio is not None:
+        base = base.without_audio()
+    base = _cover_resize(base, w, h)
+    if base.duration >= duration:
+        base = base.subclipped(0, duration)
+    elif duration - base.duration > 0.05:
+        pad = duration - base.duration
+        last = base.to_ImageClip(t=max(0.0, base.duration - 0.05)).with_duration(pad)
+        base = concatenate_videoclips([base, last])
+    return CompositeVideoClip(
+        [base.with_position("center")], size=(w, h)
+    ).with_duration(duration)
+
+
 def _background_clip(seg, duration, w, h):
-    """Screenshot background with Ken Burns, or a title card if no screenshot."""
+    """Feature video clip if available, else screenshot Ken Burns, else a title card."""
+    clip_path = seg.get("clip")
+    if clip_path and os.path.isfile(clip_path):
+        try:
+            return _video_background(clip_path, duration, w, h)
+        except Exception as exc:  # noqa: BLE001 - fall back to the still on any decode error
+            print(f"[compose] Clip failed ({os.path.basename(clip_path)}): {exc}; "
+                  "using screenshot instead.")
+
     shot = seg.get("screenshot")
     if shot and os.path.isfile(shot):
         base = ImageClip(shot).with_duration(duration)

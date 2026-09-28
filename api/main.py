@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from sse_starlette.sse import EventSourceResponse
 from starlette.background import BackgroundTask
 
-from core import explorer, video
+from core import explorer, video, video_slicer
 from core import personas
 from core.config import Config
 from core.input_parser import parse_input
@@ -230,10 +230,21 @@ async def _worker(job: Job, request: JobRequest) -> None:
         await _push(job, "stage", "Exploring the app - Chromium is visiting pages")
 
         async def keep_alive():
+            # Creep the percentage toward a per-stage ceiling so the bar keeps moving
+            # during the long exploration and rendering phases (which have no natural
+            # sub-progress signal).
             while True:
                 await asyncio.sleep(5)
                 _refresh_live_output(job)
                 job.heartbeat += 1
+                ceilings = {
+                    "exploring": 55,
+                    "narrating": 65 if job.make_video else 95,
+                    "rendering": 96,
+                }
+                ceiling = ceilings.get(job.stage)
+                if ceiling and job.progress < ceiling:
+                    job.progress = min(ceiling, job.progress + 2)
                 await _push(job, "heartbeat", "Still exploring pages..." if job.stage == "exploring" else job.message)
 
         heartbeat_task = asyncio.create_task(keep_alive())
@@ -271,16 +282,23 @@ async def _worker(job: Job, request: JobRequest) -> None:
         parsed = parse_input(script_path)
         if not parsed.segments:
             raise RuntimeError("No feature segments found in the demo script.")
-        script = generate_talking_script(CONFIG, parsed, persona)
+        script = await asyncio.to_thread(generate_talking_script, CONFIG, parsed, persona)
+        if job.make_video:
+            job.progress = max(job.progress, 68)
+            job.stage = "rendering"
+            await _push(job, "stage", "Slicing the recording into per-feature clips")
+            await asyncio.to_thread(video_slicer.attach_clips, run_dir, script["segments"])
         json_path, md_path = save_talking_script(script, run_dir)
         job.artifacts["talking-script-json"] = json_path
         job.artifacts["talking-script"] = md_path
 
         if job.make_video:
-            job.progress = 75
+            job.progress = max(job.progress, 75)
             job.stage = "rendering"
             await _push(job, "stage", "Rendering the video")
-            video.render_video(CONFIG, script["segments"], run_dir, app_slug, job.dry_run)
+            await asyncio.to_thread(
+                video.render_video, CONFIG, script["segments"], run_dir, app_slug, job.dry_run
+            )
             video_path = os.path.join(run_dir, "demo-video.mp4")
             if not os.path.isfile(video_path):
                 raise RuntimeError(f"Expected video was not created: {video_path}")
