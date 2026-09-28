@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import tempfile
@@ -23,14 +24,28 @@ from starlette.background import BackgroundTask
 
 from core import explorer, video, video_slicer
 from core import personas
+from core import storage
 from core.config import Config
 from core.input_parser import parse_input
+from core.logging_setup import start_run_logger
 from core.render_html import render_html
 from core.script_generator import generate_talking_script, save_talking_script
+from core.storage import StorageContext
 
 
 CONFIG = Config.load()
+STORAGE = StorageContext.from_config(CONFIG)
 OUTPUT_ROOT = Path(__file__).resolve().parent.parent / "output"
+
+_log = logging.getLogger(__name__)
+if STORAGE.enabled:
+    _log.info(
+        "Persistent storage ENABLED — container=%s, tables=%s/%s. "
+        "Restart this process after changing AZURE_STORAGE_CONNECTION_STRING in .env.",
+        STORAGE.blob_container_name, STORAGE.table_logs_name, STORAGE.table_jobs_name,
+    )
+else:
+    _log.info("Persistent storage DISABLED — using local filesystem under output/.")
 
 
 @dataclass
@@ -176,6 +191,56 @@ def _read_sidecar(run_dir: Path) -> dict[str, Any] | None:
         return None
 
 
+def _blob_ids(job: Job) -> tuple[str, str] | None:
+    """(app_slug, run_id) used as the blob prefix / metadata keys, or None if unknown."""
+    if not job.run_dir or not job.app_slug:
+        return None
+    return job.app_slug, os.path.basename(job.run_dir.rstrip("/\\"))
+
+
+def _sync_run(job: Job) -> None:
+    """Upload the run folder to Blob when storage is enabled (best-effort)."""
+    ids = _blob_ids(job)
+    if not ids:
+        return
+    storage.sync_run(STORAGE, job.run_dir, *ids)
+
+
+def _upsert_job_meta(job: Job, request: JobRequest, *, ended: bool = False) -> None:
+    """Mirror the run.json metadata into the jobs table when storage is enabled."""
+    ids = _blob_ids(job)
+    if not ids:
+        return
+    app_slug, run_id = ids
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    duration = None
+    if ended:
+        try:
+            started = datetime.fromisoformat(job.started_at)
+            duration = max(0, int((datetime.fromisoformat(now) - started).total_seconds()))
+        except ValueError:
+            duration = None
+    storage.upsert_job(STORAGE, app_slug, run_id, {
+        "job_id": job.id,
+        "base_url": job.base_url,
+        "app_slug": app_slug,
+        "run_id": run_id,
+        "make_video": job.make_video,
+        "dry_run": job.dry_run,
+        "format": request.format,
+        "persona_id": job.persona_id,
+        "persona_name": job.persona_name,
+        "spec_present": bool(request.spec_text.strip()),
+        "status": job.status,
+        "stage": job.stage,
+        "error": job.error,
+        "started_at": job.started_at,
+        "ended_at": now if ended else None,
+        "run_timestamp": job.run_timestamp,
+        "duration_seconds": duration,
+    })
+
+
 def _refresh_live_output(job: Job) -> None:
     if job.run_dir:
         return
@@ -223,9 +288,11 @@ async def _explore(*args):
 
 async def _worker(job: Job, request: JobRequest) -> None:
     heartbeat_task = None
+    run_logger = start_run_logger(CONFIG, STORAGE, job.id)
     try:
         job.status = "running"
         job.stage = "exploring"
+        run_logger.set_stage("exploring")
         job.progress = 10
         await _push(job, "stage", "Exploring the app - Chromium is visiting pages")
 
@@ -265,7 +332,9 @@ async def _worker(job: Job, request: JobRequest) -> None:
         job.run_timestamp = datetime.fromtimestamp(
             os.path.getctime(run_dir), tz=datetime.now().astimezone().tzinfo
         ).strftime("%Y-%m-%d %H:%M:%S %Z")
+        run_logger.bind_run_dir(run_dir)
         _write_sidecar(job, request)
+        _upsert_job_meta(job, request)
         if not os.path.isfile(script_path):
             raise RuntimeError(f"Expected demo script was not created: {script_path}")
         job.artifacts["demo-script"] = script_path
@@ -278,6 +347,8 @@ async def _worker(job: Job, request: JobRequest) -> None:
 
         job.progress = 33 if job.make_video else 50
         job.stage = "narrating"
+        run_logger.set_stage("narrating")
+        _sync_run(job)
         await _push(job, "stage", "Writing the talking script")
         parsed = parse_input(script_path)
         if not parsed.segments:
@@ -286,6 +357,7 @@ async def _worker(job: Job, request: JobRequest) -> None:
         if job.make_video:
             job.progress = max(job.progress, 68)
             job.stage = "rendering"
+            run_logger.set_stage("rendering")
             await _push(job, "stage", "Slicing the recording into per-feature clips")
             await asyncio.to_thread(video_slicer.attach_clips, run_dir, script["segments"])
         json_path, md_path = save_talking_script(script, run_dir)
@@ -295,6 +367,7 @@ async def _worker(job: Job, request: JobRequest) -> None:
         if job.make_video:
             job.progress = max(job.progress, 75)
             job.stage = "rendering"
+            run_logger.set_stage("rendering")
             await _push(job, "stage", "Rendering the video")
             await asyncio.to_thread(
                 video.render_video, CONFIG, script["segments"], run_dir, app_slug, job.dry_run
@@ -307,15 +380,23 @@ async def _worker(job: Job, request: JobRequest) -> None:
         job.progress = 100
         job.status = "completed"
         job.stage = "completed"
+        run_logger.set_stage("completed")
+        run_logger.info("Run completed")
         _write_sidecar(job, request, ended=True)
+        _upsert_job_meta(job, request, ended=True)
+        _sync_run(job)
         await _push(job, "done", "Run completed")
     except Exception as exc:
         job.status = "failed"
         job.stage = "failed"
+        run_logger.log(f"Run failed: {exc}", level=logging.ERROR)
         job.error = str(exc)
         _write_sidecar(job, request, ended=True)
+        _upsert_job_meta(job, request, ended=True)
+        _sync_run(job)
         await _push(job, "error", job.error)
     finally:
+        run_logger.close()
         if heartbeat_task:
             heartbeat_task.cancel()
 
@@ -403,10 +484,14 @@ def _duration(run_dir: Path, started_at: float | None = None) -> tuple[int, str]
 @app.get("/api/history")
 async def get_history():
     history = []
+    active_keys: set[tuple[str, str]] = set()
     for job in jobs.values():
         if job.status in {"queued", "running"}:
             _refresh_live_output(job)
             snapshot = _snapshot(job)
+            ids = _blob_ids(job)
+            if ids:
+                active_keys.add(ids)
             history.append({
                 "app_slug": job.app_slug or _app_slug(job.base_url),
                 "run_id": job.id,
@@ -424,6 +509,16 @@ async def get_history():
                 "message": "Starting the run..." if job.stage == "queued" else "Working...",
                 "duration_seconds": max(0, int((datetime.now().astimezone() - datetime.fromisoformat(job.started_at)).total_seconds())),
             })
+    filesystem_history = _history_from_filesystem()
+    if STORAGE.enabled:
+        known_keys = active_keys | {(item["app_slug"], item["run_id"]) for item in filesystem_history}
+        history.extend(_history_from_table(known_keys))
+    history.extend(filesystem_history)
+    return sorted(history, key=lambda item: item["run_id"], reverse=True)
+
+
+def _history_from_filesystem() -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = []
     if not OUTPUT_ROOT.is_dir():
         return history
     for app_dir in OUTPUT_ROOT.iterdir():
@@ -478,7 +573,64 @@ async def get_history():
                 "persona_id": (sidecar or {}).get("persona_id") or "general",
                 "persona_name": (sidecar or {}).get("persona_name") or "General / No persona",
             })
-    return sorted(history, key=lambda item: item["run_id"], reverse=True)
+    return history
+
+
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+_ARTIFACT_FILENAMES = {
+    "demo-script": "demo-script.md",
+    "demo-script-html": "demo-script.html",
+    "talking-script-json": "talking-script.json",
+    "talking-script": "talking-script.md",
+    "video": "demo-video.mp4",
+}
+
+
+def _history_from_table(active_keys: set[tuple[str, str]]) -> list[dict[str, Any]]:
+    """Build completed/failed history from the jobs table + blob listings."""
+    history: list[dict[str, Any]] = []
+    for row in storage.query_jobs(STORAGE):
+        app_slug = str(row.get("app_slug") or row.get("PartitionKey") or "")
+        run_id = str(row.get("run_id") or row.get("RowKey") or "")
+        if not app_slug or not run_id or (app_slug, run_id) in active_keys:
+            continue
+        rel_names = storage.list_run_blobs(STORAGE, app_slug, run_id)
+        rel_set = set(rel_names)
+        artifacts = {
+            key: f"{app_slug}/{run_id}/{name}"
+            for key, name in _ARTIFACT_FILENAMES.items()
+            if name in rel_set
+        }
+        screenshots = sorted(
+            name.split("/")[-1]
+            for name in rel_names
+            if name.startswith("screenshots/")
+            and Path(name).suffix.lower() in _IMAGE_SUFFIXES
+        )
+        status = str(row.get("status") or ("completed" if "talking-script" in artifacts else "in_progress"))
+        stage = str(row.get("stage") or status)
+        progress = 100 if status in {"completed", "failed"} else 10
+        message = row.get("error") if status == "failed" else "Run completed" if status == "completed" else "Working..."
+        duration_seconds = row.get("duration_seconds")
+        duration_seconds = int(duration_seconds) if isinstance(duration_seconds, (int, float)) else 0
+        history.append({
+            "app_slug": app_slug,
+            "run_id": run_id,
+            "run_timestamp": row.get("run_timestamp") or row.get("started_at") or run_id,
+            "base_url": row.get("base_url") or None,
+            "artifacts": artifacts,
+            "screenshots": screenshots[:6],
+            "status": status,
+            "stage": stage,
+            "progress": progress,
+            "message": message,
+            "duration_seconds": duration_seconds,
+            "duration_label": _duration_label(duration_seconds),
+            "screenshot_count": len(screenshots),
+            "persona_id": row.get("persona_id") or "general",
+            "persona_name": row.get("persona_name") or "General / No persona",
+        })
+    return history
 
 
 class PersonaUpdate(BaseModel):
@@ -577,6 +729,43 @@ async def get_artifact(job_id: str, name: str):
     return FileResponse(_artifact(_get_job(job_id), name))
 
 
+HISTORY_ARTIFACTS = {
+    "demo-script",
+    "demo-script-html",
+    "talking-script-json",
+    "talking-script",
+    "video",
+}
+
+
+def _serve_resolved(local_path, app_slug: str, run_id: str, rel_name: str, *, media_type=None, filename=None):
+    """Serve an artifact from local disk, falling back to Blob (temp download)."""
+    path, is_temp = storage.resolve_artifact(STORAGE, local_path, app_slug, run_id, rel_name)
+    if not path:
+        raise HTTPException(status_code=404, detail="Artifact not available")
+    background = BackgroundTask(os.unlink, path) if is_temp else None
+    return FileResponse(path, media_type=media_type, filename=filename, background=background)
+
+
+@app.get("/api/jobs/{job_id}/logs")
+async def get_job_logs(job_id: str):
+    job = _get_job(job_id)
+    if STORAGE.enabled:
+        return storage.query_logs(STORAGE, job_id)
+    return storage.parse_local_log(job.run_dir) if job.run_dir else []
+
+
+@app.get("/api/history/{app_slug}/{run_id}/logs")
+async def get_history_logs(app_slug: str, run_id: str):
+    if STORAGE.enabled:
+        meta = storage.get_job_meta(STORAGE, app_slug, run_id)
+        job_id = (meta or {}).get("job_id")
+        if job_id:
+            return storage.query_logs(STORAGE, str(job_id))
+        return []
+    return storage.parse_local_log(_history_run(app_slug, run_id))
+
+
 @app.get("/api/history/{app_slug}/{run_id}/download")
 async def download_history_artifacts(app_slug: str, run_id: str):
     return _archive_response(_history_run(app_slug, run_id))
@@ -584,31 +773,22 @@ async def download_history_artifacts(app_slug: str, run_id: str):
 
 @app.get("/api/history/{app_slug}/{run_id}/artifacts/{name}")
 async def get_history_artifact(app_slug: str, run_id: str, name: str):
-    allowed = {
-        "demo-script",
-        "demo-script-html",
-        "talking-script-json",
-        "talking-script",
-        "video",
-    }
-    if name not in allowed:
+    if name not in HISTORY_ARTIFACTS:
         raise HTTPException(status_code=404, detail="Artifact not available")
-    artifacts = _history_artifacts(_history_run(app_slug, run_id))
-    path = artifacts.get(name)
-    if not path:
-        raise HTTPException(status_code=404, detail="Artifact not available")
-    return FileResponse(path)
+    if Path(app_slug).name != app_slug or Path(run_id).name != run_id:
+        raise HTTPException(status_code=400, detail="Invalid run reference")
+    rel = _ARTIFACT_FILENAMES[name]
+    local = OUTPUT_ROOT / app_slug / run_id / rel
+    return _serve_resolved(local, app_slug, run_id, rel)
 
 
 @app.get("/api/history/{app_slug}/{run_id}/artifacts/screenshots/{name}")
 async def get_history_artifact_screenshot(app_slug: str, run_id: str, name: str):
-    run_dir = _history_run(app_slug, run_id)
-    if Path(name).name != name:
+    if Path(name).name != name or Path(app_slug).name != app_slug or Path(run_id).name != run_id:
         raise HTTPException(status_code=400, detail="Invalid screenshot name")
-    path = next((candidate for candidate in (run_dir / "screenshots" / name, run_dir / name) if candidate.is_file()), None)
-    if path is None:
-        raise HTTPException(status_code=404, detail="Screenshot not found")
-    return FileResponse(path)
+    local = OUTPUT_ROOT / app_slug / run_id / "screenshots" / name
+    return _serve_resolved(local, app_slug, run_id, f"screenshots/{name}")
+
 
 
 @app.get("/api/jobs/{job_id}/video")

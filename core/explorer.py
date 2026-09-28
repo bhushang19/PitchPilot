@@ -11,6 +11,7 @@ import asyncio
 import datetime
 import glob
 import json
+import logging
 import os
 import re
 import shutil
@@ -30,6 +31,8 @@ from agents.mcp import MCPServerStdio
 from openai import AsyncAzureOpenAI
 
 warnings.filterwarnings("ignore", category=ResourceWarning)
+
+_log = logging.getLogger(__name__)
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_HERE)
@@ -55,31 +58,31 @@ def _ensure_playwright_mcp():
     pkg_json = os.path.join(_REPO_ROOT, "package.json")
 
     if not os.path.isfile(pkg_json):
-        print("[preflight] Creating local package.json...")
+        _log.info("[preflight] Creating local package.json...")
         try:
             subprocess.check_call(
                 ["npm", "init", "-y"], shell=True, cwd=_REPO_ROOT,
                 stdout=subprocess.DEVNULL,
             )
         except subprocess.CalledProcessError as e:
-            print(f"[preflight] npm init failed: {e}")
+            _log.error("[preflight] npm init failed: %s", e)
             return False
 
     mcp_installed = os.path.isdir(
         os.path.join(node_modules, "@playwright", "mcp")
     )
     if not mcp_installed:
-        print("[preflight] Installing @playwright/mcp locally (one-time)...")
+        _log.info("[preflight] Installing @playwright/mcp locally (one-time)...")
         try:
             subprocess.check_call(
                 ["npm", "install", "@playwright/mcp"],
                 shell=True, cwd=_REPO_ROOT,
             )
         except subprocess.CalledProcessError as e:
-            print(f"[preflight] npm install failed: {e}")
+            _log.error("[preflight] npm install failed: %s", e)
             return False
 
-    print("[preflight] Ensuring Chromium matches @playwright/mcp's Playwright version...")
+    _log.info("[preflight] Ensuring Chromium matches @playwright/mcp's Playwright version...")
     # Use the Playwright CLI bundled WITH @playwright/mcp so the browser build matches
     # its pinned version exactly. A plain `npx playwright install` can resolve a
     # different (hoisted) Playwright and fetch the wrong Chromium build.
@@ -96,7 +99,7 @@ def _ensure_playwright_mcp():
                 ["npx", "playwright", "install", "chromium"], shell=True, cwd=_REPO_ROOT
             )
     except subprocess.CalledProcessError as e:
-        print(f"[preflight] Chromium install failed: {e}")
+        _log.error("[preflight] Chromium install failed: %s", e)
         return False
     return True
 
@@ -181,7 +184,7 @@ def _relocate_stray_screenshots(run_dir, screenshots_dir, script_path):
                     pass
                 break
     if moved:
-        print(f"[screenshots] Relocated {moved} screenshot(s) into {screenshots_dir}")
+        _log.info("[screenshots] Relocated %d screenshot(s) into %s", moved, screenshots_dir)
     return moved
 
 
@@ -205,7 +208,7 @@ def _finalize_session_video(video_dir, timeout=20.0):
         else:
             time.sleep(0.5)
     if not webm or not os.path.isfile(webm):
-        print("[video] No session recording was produced.")
+        _log.info("[video] No session recording was produced.")
         return None
     session_path = os.path.join(video_dir, "session.webm")
     if os.path.abspath(webm) != os.path.abspath(session_path):
@@ -215,7 +218,7 @@ def _finalize_session_video(video_dir, timeout=20.0):
             os.replace(webm, session_path)
         except OSError:
             session_path = webm
-    print(f"[video] Session recording: {session_path}")
+    _log.info("[video] Session recording: %s", session_path)
     return session_path
 
 
@@ -297,7 +300,7 @@ async def _run_agent(config, file_server, automation_server, agent_input):
         input=agent_input,
         max_turns=MAX_TURNS,
     )
-    print(f"\nAgent finished. Final output:\n{result.final_output}")
+    _log.info("Agent finished. Final output:\n%s", result.final_output)
 
 
 async def explore(config, base_url, spec_text="", username="", password="", mfa_code="", persona=None):
@@ -320,9 +323,9 @@ async def explore(config, base_url, spec_text="", username="", password="", mfa_
     agent_input = _build_agent_input(
         base_url, spec_text, username, password, mfa_code, screenshots_dir, persona
     )
-    print(f"\nThis run's output folder: {run_dir}")
+    _log.info("This run's output folder: %s", run_dir)
 
-    print("\nStarting MCP servers (filesystem + Playwright)...\n")
+    _log.info("Starting MCP servers (filesystem + Playwright)...")
     async with MCPServerStdio(
         name="Filesystem Server",
         params={
@@ -340,9 +343,9 @@ async def explore(config, base_url, spec_text="", username="", password="", mfa_
         cache_tools_list=True,
     ) as automation_server:
         fs_tools = await file_server.list_tools()
-        print(f"Filesystem tools: {[t.name for t in fs_tools]}")
+        _log.debug("Filesystem tools: %s", [t.name for t in fs_tools])
         pw_tools = await automation_server.list_tools()
-        print(f"Playwright tools: {[t.name for t in pw_tools]}\n")
+        _log.debug("Playwright tools: %s", [t.name for t in pw_tools])
 
         await _run_agent(config, file_server, automation_server, agent_input)
 

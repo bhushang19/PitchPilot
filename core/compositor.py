@@ -11,7 +11,11 @@ ImageMagick install is required.
 
 import os
 
+import logging
+
 import numpy as np
+
+_log = logging.getLogger(__name__)
 
 from moviepy import (
     AudioFileClip,
@@ -118,8 +122,11 @@ def _background_clip(seg, duration, w, h):
         try:
             return _video_background(clip_path, duration, w, h)
         except Exception as exc:  # noqa: BLE001 - fall back to the still on any decode error
-            print(f"[compose] Clip failed ({os.path.basename(clip_path)}): {exc}; "
-                  "using screenshot instead.")
+            _log.warning(
+                "[compose] Clip failed (%s): %s; using screenshot instead.",
+                os.path.basename(clip_path),
+                exc,
+            )
 
     shot = seg.get("screenshot")
     if shot and os.path.isfile(shot):

@@ -67,7 +67,12 @@ def _build_user_prompt(parsed):
         "Write the spoken narration for this demo video. Return ONLY a JSON object "
         "with this exact shape:\n"
         "{\n"
-        '  "intro": "<20-40 word spoken opening that welcomes the viewer and frames the demo>",\n'
+        '  "intro": "<a punchy 15-35 word spoken opener that greets the viewer and '
+        "invites them on a guided tour of the product. Name the product naturally "
+        "(use video_title), be warm and inclusive so the viewer feels personally taken "
+        "along (e.g. 'Welcome - let us take a quick tour of <Product>', 'Come on in, "
+        "I will show you around <Product>'), and build a little anticipation for what "
+        'they are about to see. Do NOT dive into feature detail yet.>",\n'
         '  "segments": [ {"order": <int>, "spoken_text": "<spoken narration for that feature>"} ],\n'
         '  "outro": "<20-40 word spoken closing / call to action>"\n'
         "}\n"
