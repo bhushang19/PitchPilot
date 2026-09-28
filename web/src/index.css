@@ -78,6 +78,14 @@ button { cursor: pointer; }
 .history-live { display: flex; align-items: center; gap: 7px; margin-top: 14px; border-radius: 9px; background: #eef2ff; padding: 9px 10px; color: #4338ca; font-size: .76rem; font-weight: 700; }.history-live strong { margin-left: auto; }.dark .history-live { background: #312e81; color: #c7d2fe; }
 .history-screenshots { margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 13px; }.dark .history-screenshots { border-color: #334155; }.screenshot-links { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }.screenshot-links a { display: block; height: 45px; width: 64px; overflow: hidden; border: 1px solid #cbd5e1; border-radius: 7px; background: #0f172a; }.screenshot-links img { height: 100%; width: 100%; object-fit: cover; transition: transform .2s; }.screenshot-links a:hover img { transform: scale(1.08); }.screenshot-more { align-self: center; color: #64748b; font-size: .72rem; font-weight: 700; }
 .screenshot-summary { display: flex; align-items: center; gap: 7px; margin-top: 14px; color: #0e7490; font-size: .75rem; font-weight: 700; }
+.logs-panel { max-width: 100%; }
+.logs-list { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow: auto; border: 1px solid #e2e8f0; border-radius: 10px; background: #0f172a; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }.dark .logs-list { border-color: #334155; }
+.log-row { display: flex; align-items: baseline; gap: 10px; padding: 3px 6px; border-radius: 6px; font-size: .74rem; color: #cbd5e1; }.log-row:hover { background: #1e293b; }
+.log-level { flex: 0 0 auto; min-width: 62px; font-weight: 800; font-size: .66rem; letter-spacing: .04em; }
+.log-info { color: #38bdf8; } .log-debug { color: #94a3b8; } .log-warning { color: #fbbf24; } .log-error { color: #fb7185; } .log-critical { color: #fb7185; }
+.log-stage { flex: 0 0 auto; color: #a5b4fc; font-weight: 700; font-size: .66rem; }
+.log-message { flex: 1 1 auto; white-space: pre-wrap; word-break: break-word; }
+.log-ts { flex: 0 0 auto; color: #64748b; font-size: .66rem; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 4px #e0e7ff; } 50% { box-shadow: 0 0 0 8px #e0e7ff66; } }
 @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .45; } } @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes slide-progress { 0% { transform: translateX(-115%); } 100% { transform: translateX(280%); } }

@@ -69,8 +69,22 @@ class Config:
     enable_bg_music: bool = False
     bg_music_volume: float = 0.08
 
+    # Persistent storage. When a connection string is present, artifacts sync to
+    # Blob and logs/metadata go to Table; otherwise everything stays on local disk.
+    storage_connection_string: str = ""
+    blob_container_name: str = "pitchpilot-runs"
+    table_logs_name: str = "pitchpilotlogs"
+    table_jobs_name: str = "pitchpilotjobs"
+
+    # Logging verbosity (DEBUG / INFO / WARNING / ERROR).
+    log_level: str = "INFO"
+
     # Extra fields kept for reference/debugging.
     extras: dict = field(default_factory=dict)
+
+    @property
+    def storage_enabled(self) -> bool:
+        return bool(self.storage_connection_string.strip())
 
     @classmethod
     def load(cls):
@@ -91,6 +105,11 @@ class Config:
             fps=int(_get_float("VIDEO_FPS", 30)),
             enable_bg_music=_get_bool("ENABLE_BG_MUSIC", False),
             bg_music_volume=_get_float("BG_MUSIC_VOLUME", 0.08),
+            storage_connection_string=os.getenv("AZURE_STORAGE_CONNECTION_STRING", ""),
+            blob_container_name=os.getenv("BLOB_CONTAINER_NAME", "") or "pitchpilot-runs",
+            table_logs_name=os.getenv("TABLE_LOGS_NAME", "") or "pitchpilotlogs",
+            table_jobs_name=os.getenv("TABLE_JOBS_NAME", "") or "pitchpilotjobs",
+            log_level=(os.getenv("LOG_LEVEL", "") or "INFO").strip().upper(),
         )
 
     def missing_for_script(self):

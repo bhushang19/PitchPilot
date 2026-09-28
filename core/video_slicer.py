@@ -10,8 +10,11 @@ its screenshot and the compositor falls back to the Ken Burns still.
 """
 
 import glob
+import logging
 import os
 import subprocess
+
+_log = logging.getLogger(__name__)
 
 # Minimum clip length; anything shorter is dropped so the compositor uses the still.
 _MIN_CLIP_SECONDS = 0.6
@@ -67,8 +70,11 @@ def _slice(ffmpeg, src, start, duration, out_path):
         cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
     )
     if proc.returncode != 0 or not os.path.isfile(out_path):
-        print(f"[slice] ffmpeg failed for {os.path.basename(out_path)}: "
-              f"{(proc.stderr or '').strip()[-300:]}")
+        _log.warning(
+            "[slice] ffmpeg failed for %s: %s",
+            os.path.basename(out_path),
+            (proc.stderr or "").strip()[-300:],
+        )
         return False
     return True
 
@@ -82,12 +88,12 @@ def attach_clips(run_dir, segments):
     """
     session = _find_session_video(run_dir)
     if not session:
-        print("[slice] No session recording found; keeping screenshot stills.")
+        _log.info("[slice] No session recording found; keeping screenshot stills.")
         return 0
 
     duration = _video_duration(session)
     if duration <= 0:
-        print("[slice] Could not read session video duration; keeping stills.")
+        _log.warning("[slice] Could not read session video duration; keeping stills.")
         return 0
 
     t0 = os.path.getctime(session)
@@ -113,10 +119,17 @@ def attach_clips(run_dir, segments):
     created = 0
     prev_end = 0.0
     for idx, (seg, mark) in enumerate(zip(feats, marks)):
+        is_first = idx == 0
         is_last = idx == len(feats) - 1
-        # This feature spans from the previous cut to its own screenshot moment;
-        # the last feature extends to the end so trailing action isn't lost.
-        start = prev_end
+        if is_first:
+            # Session start includes sign-in / role-selection / OTP entry, which the
+            # narration never covers (see agent_instructions.txt) — start just before
+            # this feature's own screenshot instead, so video and audio stay in sync.
+            start = max(0.0, mark - _DEFAULT_LEAD_SECONDS)
+        else:
+            # This feature spans from the previous cut to its own screenshot moment;
+            # the last feature extends to the end so trailing action isn't lost.
+            start = prev_end
         end = duration if is_last else mark
         if end <= start:
             # Timestamps out of order (clock skew) — fall back to a short lead-in.
@@ -132,5 +145,5 @@ def attach_clips(run_dir, segments):
             created += 1
         prev_end = end
 
-    print(f"[slice] Created {created} feature clip(s) from the session recording.")
+    _log.info("[slice] Created %d feature clip(s) from the session recording.", created)
     return created

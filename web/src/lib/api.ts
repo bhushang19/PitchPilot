@@ -126,6 +126,21 @@ export async function getHistoryScript(run: HistoryRun): Promise<string> {
   return response.text()
 }
 
+export type LogRecord = {
+  ts: string
+  level: string
+  logger: string
+  stage: string
+  message: string
+}
+
+export async function getRunLogs(run: HistoryRun): Promise<LogRecord[]> {
+  const url = `${API_BASE}/api/history/${encodeURIComponent(run.app_slug)}/${encodeURIComponent(run.run_id)}/logs`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error("Could not load run logs")
+  return response.json()
+}
+
 export function videoUrl(id: string): string {
   return `${API_BASE}/api/jobs/${id}/video`
 }

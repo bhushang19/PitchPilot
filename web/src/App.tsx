@@ -28,6 +28,7 @@ import {
   getHistoryScript,
   getJob,
   getPersonas,
+  getRunLogs,
   getScriptText,
   historyArtifactUrl,
   historyDownloadUrl,
@@ -41,6 +42,7 @@ import {
   type CreateJobPayload,
   type HistoryRun,
   type JobSnapshot,
+  type LogRecord,
   type Persona,
 } from "./lib/api";
 
@@ -917,9 +919,25 @@ function HistoryDetail({
   onBack: () => void;
   onNew: () => void;
 }) {
-  const [tab, setTab] = useState<"html" | "transcript" | "artifacts" | "video">("html");
+  const [tab, setTab] = useState<"html" | "transcript" | "artifacts" | "video" | "logs">("html");
+  const [logs, setLogs] = useState<LogRecord[] | null>(null);
+  const [logsError, setLogsError] = useState("");
   const hasHtml = Boolean(run.artifacts["demo-script-html"]);
   const hasVideo = Boolean(run.artifacts.video);
+  useEffect(() => {
+    if (tab !== "logs" || logs !== null) return;
+    let active = true;
+    getRunLogs(run)
+      .then((records) => {
+        if (active) setLogs(records);
+      })
+      .catch((error) => {
+        if (active) setLogsError(error instanceof Error ? error.message : "Could not load run logs");
+      });
+    return () => {
+      active = false;
+    };
+  }, [tab, logs, run]);
   const artifactLabels: Record<string, string> = {
     "demo-script": "Demo script (.md)",
     "demo-script-html": "Demo script (.html)",
@@ -977,6 +995,12 @@ function HistoryDetail({
             onClick={() => setTab("artifacts")}
           >
             <FileCheck size={15} /> Artifacts
+          </button>
+          <button
+            className={`tab ${tab === "logs" ? "active" : ""}`}
+            onClick={() => setTab("logs")}
+          >
+            <FileText size={15} /> Logs
           </button>
           {hasVideo && (
             <button
@@ -1057,6 +1081,29 @@ function HistoryDetail({
                 <p className="screenshot-summary">
                   <FileCheck size={14} /> {run.screenshot_count ?? run.screenshots.length} screenshots captured
                 </p>
+              </div>
+            )}
+            {tab === "logs" && (
+              <div className="logs-panel">
+                {logsError && <p className="hero-copy">{logsError}</p>}
+                {!logsError && logs === null && <p className="hero-copy">Loading logs...</p>}
+                {!logsError && logs !== null && logs.length === 0 && (
+                  <p className="hero-copy">No logs were recorded for this run.</p>
+                )}
+                {!logsError && logs !== null && logs.length > 0 && (
+                  <div className="logs-list">
+                    {logs.map((record, index) => (
+                      <div className="log-row" key={index}>
+                        <span className={`log-level log-${record.level.toLowerCase()}`}>
+                          {record.level || "INFO"}
+                        </span>
+                        {record.stage && <span className="log-stage">{record.stage}</span>}
+                        <span className="log-message">{record.message}</span>
+                        {record.ts && <span className="log-ts">{record.ts}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
