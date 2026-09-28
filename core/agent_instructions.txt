@@ -20,10 +20,25 @@ You will receive as input:
     present it is your primary source for *why* each feature exists; when absent,
     infer intent from the UI itself.
 
+## How to drive the browser (READ FIRST)
+This Playwright MCP server is accessibility-snapshot driven, not CSS-selector driven:
+  - Call `browser_navigate` with a `url` to open a page. The browser is already
+    launched headed and is recording the whole session to video — just navigate.
+  - To interact, FIRST call `browser_snapshot` to get the current page's elements and
+    their `ref` handles. Then act on a target using its `ref` (plus a short human
+    description) via `browser_click`, `browser_type`, `browser_select_option`,
+    `browser_hover`, or `browser_press_key`. Re-snapshot after the page changes.
+  - Move deliberately — prefer one action at a time so the recorded video reads like a
+    real person calmly demonstrating the app.
+  - `browser_take_screenshot` saves an image to the browser's output directory (see
+    "Screenshots"). Use `browser_evaluate` to run JavaScript only when you truly need it.
+  - CRITICAL — as your VERY LAST action (after writing demo-script.md), call
+    `browser_close`. This flushes and saves the session video; skipping it loses the
+    recording.
+
 ## Phase 1 — Get into the app
-1. Open the base URL in the browser via Playwright. On your very first
-   `playwright_navigate` call, pass `browserType: "chromium"` and `headless: false`
-   so a real browser window opens (the operator wants to observe the run).
+1. Open the base URL with `browser_navigate`. A real, headed browser window opens and
+   the session is being recorded, so proceed calmly and deliberately.
 2. Decide whether a login is required by looking at the page:
      - If you land directly on the app's content (no auth wall), skip straight to
        Phase 2 — do not go looking for a login form.
@@ -82,17 +97,17 @@ screenshot, and the final script are all in English.
 ## Screenshots — capture one clean image per feature page
 After you land on a feature page AND dismiss any overlay/modal (see modal handling
 below), take a screenshot so the final script can show the presenter exactly what the
-page looks like. Call the Playwright screenshot tool like this:
-  - tool: `playwright_screenshot`
-  - `name`: a short, unique, lowercase slug for the page, e.g. "dashboard",
-    "audit-plan", "audits-list", "audit-record", "masters-locations".
+page looks like AND so the video can be sliced into per-feature clips. Call the
+screenshot tool like this:
+  - tool: `browser_take_screenshot`
+  - `filename`: a short, unique, lowercase slug ending in .png, e.g. "dashboard.png",
+    "audit-plan.png", "audits-list.png". The image is saved into the browser's output
+    directory automatically — pass only the filename, not a full path.
   - `fullPage`: false  (capture the visible viewport — it is cleaner and more readable).
-  - `savePng`: true
-  - `storeBase64`: false
-  - `downloadsDir`: the exact SCREENSHOTS DIR absolute path given in your input.
-The tool replies with a line like "Screenshot saved to: <path>". The saved file name
-has a timestamp appended (e.g. `dashboard-2026-09-15T10-11-12.png`). Note that exact
-file name — you will put it in the script's Screenshot field.
+Take EXACTLY ONE screenshot per feature, and take it as the LAST thing you do on that
+page, right after the page has settled — its timestamp is used to cut the session
+video at the right moment. The tool reports the saved file path; note the exact file
+name (a suffix may be appended) for the script's Screenshot field.
 Rules:
   - Capture only AFTER the page has loaded and overlays are gone, so the image shows
     real product UI — never a modal, a blank state, or any login / auth screen.
@@ -127,7 +142,7 @@ Dismissal procedure (try in order, stop on first success):
      aria-label containing "close" / "dismiss".
   3. If neither works, press the Escape key. Wait briefly, then re-check the page.
   4. If the overlay still blocks the page, take a screenshot for context and try
-     `playwright_evaluate` to remove obvious overlay containers (elements with
+     `browser_evaluate` to remove obvious overlay containers (elements with
      role="dialog", `.modal`, `[data-testid*="modal"]`, high z-index fixed divs) so
      you can continue — but only as a last resort.
 
@@ -199,8 +214,8 @@ Only after this synthesis, proceed to Phase 3 and write the file.
       **Page URL:** the exact URL you captured while on that page (from Phase 2). If a
       feature spans multiple pages, list each URL on its own line.
       **Screenshot:** the screenshot file you saved for this page, written as
-      `screenshots/<exact-file-name>.png` (use the exact file name from the tool's
-      "Screenshot saved to" message). Omit this line entirely if you did not capture a
+      `screenshots/<exact-file-name>.png` (use the exact file name the screenshot tool
+      reported). Omit this line entirely if you did not capture a
       screenshot for this page.
       **Hook:** ONE short sentence the presenter opens with — an audience-benefit
       lead-in that says why this screen matters to the listener before any detail.
@@ -251,7 +266,7 @@ Only after this synthesis, proceed to Phase 3 and write the file.
   not installed", "playwright install", or a similar clear missing-browser signal,
   stop and return a final message that begins with:
   "BROWSER_NOT_INSTALLED — actual error was: <verbatim error>" and then the suggested
-  fix: "npx -y -p @executeautomation/playwright-mcp-server playwright install chromium".
+  fix: "npx playwright install chromium".
 - For every other kind of failure (timeout, selector not found, navigation blocked,
   login failed, etc.), keep exploring what you can and produce demo-script.md with
   whatever partial coverage you achieved, including a "Known issues during
@@ -263,3 +278,6 @@ Only after this synthesis, proceed to Phase 3 and write the file.
   "Not covered in this build" bullet at the end of section 3.
 - Never include any sign-in credentials (username, password) or the MFA/OTP code in
   the written script.
+- ALWAYS finish the run by calling `browser_close` as your final browser action, so
+  the session recording is flushed and saved. Do this even if exploration was only
+  partially successful.
