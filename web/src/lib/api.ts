@@ -141,6 +141,13 @@ export async function getRunLogs(run: HistoryRun): Promise<LogRecord[]> {
   return response.json()
 }
 
+export async function getRunScreenshots(run: HistoryRun): Promise<string[]> {
+  const url = `${API_BASE}/api/history/${encodeURIComponent(run.app_slug)}/${encodeURIComponent(run.run_id)}/screenshots`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error("Could not load screenshots")
+  return response.json()
+}
+
 export function videoUrl(id: string): string {
   return `${API_BASE}/api/jobs/${id}/video`
 }
