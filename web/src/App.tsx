@@ -7,6 +7,7 @@ import {
   Download,
   FileCheck,
   FileText,
+  Image as ImageIcon,
   LoaderCircle,
   Moon,
   Play,
@@ -29,12 +30,12 @@ import {
   getJob,
   getPersonas,
   getRunLogs,
+  getRunScreenshots,
   getScriptText,
   historyArtifactUrl,
   historyDownloadUrl,
   historyScreenshotUrl,
   jobDownloadUrl,
-  jobScreenshotUrl,
   resetPersona,
   subscribeToJob,
   updatePersona,
@@ -713,18 +714,6 @@ function HistoryView({
   onNew: () => void;
   onOpen: (run: HistoryRun) => void;
 }) {
-  const labels: Record<string, string> = {
-    "demo-script": "Demo script",
-    "demo-script-html": "Demo script HTML",
-    "talking-script-json": "Talking script JSON",
-    "talking-script": "Talking script",
-    video: "Demo video",
-  };
-  const formatDuration = (run: HistoryRun) =>
-    run.duration_label ||
-    (run.duration_seconds
-      ? `${Math.floor(run.duration_seconds / 60)}m ${run.duration_seconds % 60}s`
-      : "Not available");
   const total = runs.length;
   const completed = runs.filter((r) => r.status === "completed").length;
   const failed = runs.filter((r) => r.status === "failed").length;
@@ -792,116 +781,94 @@ function HistoryView({
           <p className="muted mt-2">Generated runs will appear here.</p>
         </div>
       ) : (
-        <div className="history-grid">
-          {runs.map((run) => {
-            const isActive = run.status === "in_progress";
-            const isFailed = run.status === "failed";
-            const artifactHref = (name: string) =>
-              isActive && run.job_id
-                ? artifactUrl(run.job_id, name)
-                : historyArtifactUrl(run, name);
-            const screenshotHref = (name: string) =>
-              isActive && run.job_id
-                ? jobScreenshotUrl(run.job_id, name)
-                : historyScreenshotUrl(run, name);
-            const screenshotCount =
-              run.screenshot_count ?? run.screenshots.length;
-            const badgeClass = isActive
-              ? "status-active"
-              : isFailed
-                ? "status-error"
-                : "status-success";
-            const badgeLabel = isActive
-              ? "In progress"
-              : isFailed
-                ? "Failed"
-                : "Complete";
-            return (
-              <article
-                className="history-card"
-                key={`${run.app_slug}-${run.run_id}`}
-              >
-                <div className="history-card-top">
-                  <div>
-                    <p className="history-app">{run.app_slug}</p>
-                    {run.base_url && (
-                      <p className="history-url" title={run.base_url}>
-                        {run.base_url}
-                      </p>
-                    )}
-                    <p className="history-date">{run.run_timestamp}</p>
-                    {run.persona_id && run.persona_id !== "general" && (
-                      <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-300">
-                        <UsersRound size={11} /> {run.persona_name}
-                      </span>
-                    )}
-                  </div>
-                  <span className={`status ${badgeClass}`}>{badgeLabel}</span>
-                </div>
-                <p className="history-id">Run {run.run_id}</p>
-                <p className="history-duration">
-                  Total time <strong>{formatDuration(run)}</strong>
-                </p>
-                {!isActive && (
-                  <button
-                    className="secondary-button mt-4"
-                    onClick={() => onOpen(run)}
+        <div className="surface job-table-wrap">
+          <table className="job-table">
+            <thead>
+              <tr>
+                <th>Demo</th>
+                <th className="job-col-url">URL</th>
+                <th>Persona</th>
+                <th>Generated</th>
+                <th>Status</th>
+                <th aria-hidden="true" />
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((run) => {
+                const isActive = run.status === "in_progress";
+                const isFailed = run.status === "failed";
+                const badgeClass = isActive
+                  ? "status-active"
+                  : isFailed
+                    ? "status-error"
+                    : "status-success";
+                const badgeLabel = isActive
+                  ? "In progress"
+                  : isFailed
+                    ? "Failed"
+                    : "Complete";
+                const open = () => !isActive && onOpen(run);
+                return (
+                  <tr
+                    className={`job-row${isActive ? " job-row-active" : ""}`}
+                    key={`${run.app_slug}-${run.run_id}`}
+                    onClick={open}
+                    role={isActive ? undefined : "button"}
+                    tabIndex={isActive ? undefined : 0}
+                    onKeyDown={(event) => {
+                      if (isActive) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onOpen(run);
+                      }
+                    }}
                   >
-                    View details <ArrowRight size={15} />
-                  </button>
-                )}
-                {isActive && (
-                  <div className="history-live">
-                    <LoaderCircle className="spin" size={14} />{" "}
-                    {run.message || "Working..."}
-                    <strong>{run.progress ?? 0}%</strong>
-                  </div>
-                )}
-                <div className="history-artifacts">
-                  {Object.entries(run.artifacts).map(([name, path]) => (
-                    <a
-                      className="artifact-download"
-                      href={artifactHref(name)}
-                      target="_blank"
-                      rel="noreferrer"
-                      key={name}
-                    >
-                      <FileText size={14} />
-                      <span>{labels[name] || name}</span>
-                      <ArrowRight size={13} />
-                      <span className="artifact-path">
-                        {path.split(/[\\/]/).pop()}
-                      </span>
-                    </a>
-                  ))}
-                </div>
-                <div className="history-screenshots">
-                  <p className="screenshot-summary">
-                    <FileCheck size={14} /> {screenshotCount} screenshot
-                    {screenshotCount === 1 ? "" : "s"} captured
-                  </p>
-                  <div className="screenshot-links">
-                    {run.screenshots.slice(0, 6).map((name) => (
-                      <a
-                        href={screenshotHref(name)}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={name}
-                        key={name}
-                      >
-                        <img src={screenshotHref(name)} alt={name} />
-                      </a>
-                    ))}
-                    {screenshotCount > run.screenshots.length && (
-                      <span className="screenshot-more">
-                        +{screenshotCount - run.screenshots.length} more
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+                    <td>
+                      <span className="job-app">{run.app_slug}</span>
+                      <span className="job-run-id">Run {run.run_id}</span>
+                    </td>
+                    <td className="job-col-url">
+                      {run.base_url ? (
+                        <span className="job-url" title={run.base_url}>
+                          {run.base_url}
+                        </span>
+                      ) : (
+                        <span className="job-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {run.persona_id && run.persona_id !== "general" ? (
+                        <span className="job-persona">
+                          <UsersRound size={12} /> {run.persona_name}
+                        </span>
+                      ) : (
+                        <span className="job-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className="job-date">{run.run_timestamp}</span>
+                    </td>
+                    <td>
+                      {isActive ? (
+                        <span className="job-live">
+                          <LoaderCircle className="spin" size={13} />
+                          <span>{run.message || "Working..."}</span>
+                          <strong>{run.progress ?? 0}%</strong>
+                        </span>
+                      ) : (
+                        <span className={`status ${badgeClass}`}>
+                          {badgeLabel}
+                        </span>
+                      )}
+                    </td>
+                    <td className="job-col-action">
+                      {!isActive && <ArrowRight size={16} />}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </section>
@@ -919,11 +886,14 @@ function HistoryDetail({
   onBack: () => void;
   onNew: () => void;
 }) {
-  const [tab, setTab] = useState<"html" | "transcript" | "artifacts" | "video" | "logs">("html");
+  const [tab, setTab] = useState<"html" | "transcript" | "artifacts" | "video" | "logs" | "screenshots">("html");
   const [logs, setLogs] = useState<LogRecord[] | null>(null);
   const [logsError, setLogsError] = useState("");
+  const [shots, setShots] = useState<string[] | null>(null);
+  const [shotsError, setShotsError] = useState("");
   const hasHtml = Boolean(run.artifacts["demo-script-html"]);
   const hasVideo = Boolean(run.artifacts.video);
+  const shotCount = run.screenshot_count ?? run.screenshots.length;
   useEffect(() => {
     if (tab !== "logs" || logs !== null) return;
     let active = true;
@@ -938,6 +908,20 @@ function HistoryDetail({
       active = false;
     };
   }, [tab, logs, run]);
+  useEffect(() => {
+    if (tab !== "screenshots" || shots !== null) return;
+    let active = true;
+    getRunScreenshots(run)
+      .then((names) => {
+        if (active) setShots(names);
+      })
+      .catch((error) => {
+        if (active) setShotsError(error instanceof Error ? error.message : "Could not load screenshots");
+      });
+    return () => {
+      active = false;
+    };
+  }, [tab, shots, run]);
   const artifactLabels: Record<string, string> = {
     "demo-script": "Demo script (.md)",
     "demo-script-html": "Demo script (.html)",
@@ -996,6 +980,14 @@ function HistoryDetail({
           >
             <FileCheck size={15} /> Artifacts
           </button>
+          {shotCount > 0 && (
+            <button
+              className={`tab ${tab === "screenshots" ? "active" : ""}`}
+              onClick={() => setTab("screenshots")}
+            >
+              <ImageIcon size={15} /> Screenshots
+            </button>
+          )}
           <button
             className={`tab ${tab === "logs" ? "active" : ""}`}
             onClick={() => setTab("logs")}
@@ -1081,6 +1073,38 @@ function HistoryDetail({
                 <p className="screenshot-summary">
                   <FileCheck size={14} /> {run.screenshot_count ?? run.screenshots.length} screenshots captured
                 </p>
+              </div>
+            )}
+            {tab === "screenshots" && (
+              <div className="gallery-panel">
+                {shotsError && <p className="hero-copy">{shotsError}</p>}
+                {!shotsError && shots === null && (
+                  <p className="hero-copy">Loading screenshots...</p>
+                )}
+                {!shotsError && shots !== null && shots.length === 0 && (
+                  <p className="hero-copy">No screenshots were captured for this run.</p>
+                )}
+                {!shotsError && shots !== null && shots.length > 0 && (
+                  <>
+                    <p className="screenshot-summary">
+                      <ImageIcon size={14} /> {shots.length} screenshot
+                      {shots.length === 1 ? "" : "s"} captured
+                    </p>
+                    <div className="gallery-grid">
+                      {shots.map((name) => (
+                        <a
+                          href={historyScreenshotUrl(run, name)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={name}
+                          key={name}
+                        >
+                          <img src={historyScreenshotUrl(run, name)} alt={name} loading="lazy" />
+                        </a>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
             {tab === "logs" && (
