@@ -1,9 +1,9 @@
 """Compose the final demo video with MoviePy.
 
-For each talking-script segment the screenshot fills the frame with a subtle
-Ken Burns zoom while the segment's narration audio plays over it. Segments are
-joined with short crossfades. Optional background music is mixed in well below
-the speech.
+Each segment shows its recorded feature clip (or a static screenshot when no clip
+exists) while the segment's narration audio plays over it. Segments are joined with
+short crossfades. Optional background music is looped underneath and ducked below the
+narration.
 
 Targets the MoviePy 2.x API. Title cards are rendered with Pillow so no
 ImageMagick install is required.
@@ -29,9 +29,9 @@ from moviepy import (
 )
 
 CROSSFADE = 0.4                   # seconds of crossfade between segments
-KEN_BURNS_ZOOM = 0.06             # total zoom growth over a segment
 TITLE_BG_COLOR = (17, 17, 27)     # dark indigo backdrop for title cards
 WORDS_PER_SECOND = 2.6            # used only to estimate dry-run placeholder length
+MUSIC_DUCK = 0.6                  # how far music dips under full-volume narration
 
 
 def _cover_resize(clip, w, h):
@@ -39,13 +39,6 @@ def _cover_resize(clip, w, h):
     iw, ih = clip.size
     scale = max(w / iw, h / ih)
     return clip.resized(scale)
-
-
-def _ken_burns(clip, duration):
-    """Apply a subtle centered zoom over the clip's duration."""
-    if not duration:
-        return clip
-    return clip.resized(lambda t: 1 + KEN_BURNS_ZOOM * (t / duration))
 
 
 def _title_card_array(text, w, h):
@@ -116,7 +109,7 @@ def _video_background(clip_path, duration, w, h):
 
 
 def _background_clip(seg, duration, w, h):
-    """Feature video clip if available, else screenshot Ken Burns, else a title card."""
+    """Feature video clip if available, else a static screenshot, else a title card."""
     clip_path = seg.get("clip")
     if clip_path and os.path.isfile(clip_path):
         try:
@@ -131,8 +124,7 @@ def _background_clip(seg, duration, w, h):
     shot = seg.get("screenshot")
     if shot and os.path.isfile(shot):
         base = ImageClip(shot).with_duration(duration)
-        base = _cover_resize(base, w, h)
-        base = _ken_burns(base, duration).with_position("center")
+        base = _cover_resize(base, w, h).with_position("center")
         return CompositeVideoClip([base], size=(w, h)).with_duration(duration)
 
     card = ImageClip(_title_card_array(seg.get("name", ""), w, h)).with_duration(duration)
@@ -175,17 +167,43 @@ def _concat_crossfade(clips, w, h):
     return CompositeVideoClip(positioned, size=(w, h)).with_duration(t)
 
 
+def _speech_envelope(audio, sr=4000, smooth_s=0.15):
+    """Return (times, gain[0..1]) tracking how loud the narration is over time."""
+    samples = audio.to_soundarray(fps=sr)
+    amp = np.abs(samples).max(axis=1) if samples.ndim == 2 else np.abs(samples)
+    win = max(1, int(smooth_s * sr))
+    smooth = np.convolve(amp, np.ones(win) / win, mode="same")
+    ref = np.percentile(smooth, 90) or float(smooth.max() or 1.0)
+    env = np.clip(smooth / (ref or 1.0), 0.0, 1.0)
+    step = max(1, int(0.02 * sr))  # ~20 ms envelope resolution keeps interp cheap
+    times = np.arange(len(env), dtype="float64") / sr
+    return times[::step], env[::step]
+
+
+def _ducking_transform(env_times, env_gain, ceiling, duck):
+    """MoviePy audio transform: scale music by the ceiling, dipping it under speech."""
+    def transform(get_frame, t):
+        frame = get_frame(t)
+        speech = np.interp(t, env_times, env_gain)
+        factor = np.asarray(ceiling * (1.0 - duck * speech))
+        if getattr(frame, "ndim", 1) == 2:
+            return frame * factor.reshape(-1, 1)
+        return frame * factor
+    return transform
+
+
 def _add_background_music(video, music_path, volume):
     if not music_path or not os.path.isfile(music_path):
         return video
-    music = AudioFileClip(music_path).with_effects(
-        [
-            afx.AudioLoop(duration=video.duration),
-            afx.MultiplyVolume(volume),
-            afx.AudioFadeIn(1.0),
-            afx.AudioFadeOut(1.5),
-        ]
-    )
+    music = AudioFileClip(music_path).with_effects([afx.AudioLoop(duration=video.duration)])
+    if video.audio is not None:
+        # Side-chain style ducking: music sits at `volume` in the gaps and dips under
+        # the narration so speech always stays clearly on top.
+        env_times, env_gain = _speech_envelope(video.audio)
+        music = music.transform(_ducking_transform(env_times, env_gain, volume, MUSIC_DUCK))
+    else:
+        music = music.with_effects([afx.MultiplyVolume(volume)])
+    music = music.with_effects([afx.AudioFadeIn(1.0), afx.AudioFadeOut(1.5)])
     mixed = CompositeAudioClip([video.audio, music]) if video.audio is not None else music
     return video.with_audio(mixed)
 

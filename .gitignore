@@ -46,8 +46,9 @@ output/
 # User persona edits (runtime state; presets ship as code defaults)
 config/personas.json
 
-# User-provided background music
+# Background music: local/user-provided only (licensing); keep just the drop-in guide.
 assets/music/*
+!assets/music/README.txt
 
 # Logs
 *.log

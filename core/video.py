@@ -8,6 +8,7 @@ transcript. Ported from the reference video generator's render path.
 import json
 import logging
 import os
+import random
 import traceback
 
 _log = logging.getLogger(__name__)
@@ -21,10 +22,12 @@ _AUDIO_EXTS = (".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac")
 def _find_music():
     if not os.path.isdir(_MUSIC_DIR):
         return None
-    for name in sorted(os.listdir(_MUSIC_DIR)):
-        if name.lower().endswith(_AUDIO_EXTS):
-            return os.path.join(_MUSIC_DIR, name)
-    return None
+    tracks = [
+        os.path.join(_MUSIC_DIR, name)
+        for name in os.listdir(_MUSIC_DIR)
+        if name.lower().endswith(_AUDIO_EXTS)
+    ]
+    return random.choice(tracks) if tracks else None
 
 
 def render_video(config, segments, run_dir, app_slug, dry_run=False):
