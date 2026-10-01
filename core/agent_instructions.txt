@@ -94,7 +94,7 @@ screenshot, and the final script are all in English.
      - If a page requires selecting a record, pick the first available one.
      - Keep total browser actions to roughly 40–60 steps. Prioritise breadth over depth.
 
-## Screenshots — capture one clean image per feature page
+## Screenshots — every narrated feature MUST have its own screenshot
 After you land on a feature page AND dismiss any overlay/modal (see modal handling
 below), take a screenshot so the final script can show the presenter exactly what the
 page looks like AND so the video can be sliced into per-feature clips. Call the
@@ -104,19 +104,42 @@ screenshot tool like this:
     "audit-plan.png", "audits-list.png". The image is saved into the browser's output
     directory automatically — pass only the filename, not a full path.
   - `fullPage`: false  (capture the visible viewport — it is cleaner and more readable).
-Take EXACTLY ONE screenshot per feature, and take it as the LAST thing you do on that
-page, right after the page has settled — its timestamp is used to cut the session
-video at the right moment. The tool reports the saved file path; note the exact file
-name (a suffix may be appended) for the script's Screenshot field.
+Take the screenshot as the LAST thing you do on that page, right after the page has
+settled — its modification time is used to cut the session video at the right moment.
+The tool reports the saved file path; note the exact file name (a suffix may be
+appended) for the script's Screenshot field.
+
+CRITICAL — one distinct screenshot per narrated feature (non-negotiable):
+The video pipeline slices the session recording using each feature's screenshot
+timestamp, and any feature WITHOUT a screenshot is rendered as a plain text card with
+no video — which desynchronises the narration from what is on screen. Therefore:
+  - Every `####` feature subsection you write in demo-script.md MUST have its OWN
+    distinct screenshot captured on that feature's screen. The number of screenshots
+    you take must equal the number of feature subsections you write — no feature may
+    reuse or borrow another feature's screenshot.
+  - If several narrative points come from the SAME page (e.g. a results page with a
+    list view, a decision panel, and a lineage tab), do ONE of these — never neither:
+      (a) put each point in its own state and capture a DISTINCT screenshot for each
+          (switch the tab / open the panel / select the row, then screenshot), so each
+          feature subsection has a unique image; or
+      (b) combine those points into a SINGLE feature subsection with one screenshot.
+    Do NOT write three feature subsections and capture only one screenshot.
+  - Entry/form pages ARE real features — capture them. "New Analysis", "Create X",
+    search, and similar input screens are legitimate product UI. To make the shot
+    representative, type a realistic example into the primary field FIRST (do not
+    submit if that would mutate data), then screenshot. A populated form is a valid,
+    non-blank capture.
 Rules:
   - Capture only AFTER the page has loaded and overlays are gone, so the image shows
-    real product UI — never a modal, a blank state, or any login / auth screen.
+    real product UI. "Blank state" means an empty loading/skeleton screen or a
+    login / auth screen — NOT a legitimate form or empty-list feature page, which you
+    should still capture (populate it with an example first where possible).
   - If the app has a language selector and the page is not in English, switch it to
     English before you capture.
-  - One screenshot per feature subsection is enough. If a feature spans several pages,
-    capture the single most representative one.
-  - If a screenshot call fails, retry once; if it still fails, continue without it and
-    simply omit the Screenshot field for that feature.
+  - If a screenshot call fails, retry at least twice. If it still fails, do NOT write a
+    standalone feature subsection that has no screenshot — instead fold that point into
+    an adjacent feature that does have one, or drop it. The script must never contain a
+    feature subsection without a Screenshot line.
 
 
 ## Modal / dialog handling (applies to Phase 1 AND Phase 2) — HIGH PRIORITY
@@ -170,6 +193,11 @@ your own working memory — no tool calls needed, just think:
   e) For each beat, pick ONE feature as the anchor and any others as brief
      supporting mentions. Drop features that don't clearly add value to the story
      (mention them only in "Not covered in this build" if the spec expected them).
+     IMPORTANT: you will write one `####` feature subsection ONLY for screens you
+     captured a distinct screenshot of. Cross-check your planned subsections against
+     the screenshots you actually took — the counts must match one-to-one. If two
+     planned subsections share a single screen/screenshot, either capture a second
+     distinct screenshot for one of them or merge them into a single subsection.
   f) Draft a one-sentence "why should the audience care" hook for the whole demo.
   g) Draft the "Demo at a glance" agenda: for each beat, one short line naming the
      beat and the single outcome the audience should remember from it.
@@ -213,10 +241,13 @@ Only after this synthesis, proceed to Phase 3 and write the file.
       #### <Feature name>
       **Page URL:** the exact URL you captured while on that page (from Phase 2). If a
       feature spans multiple pages, list each URL on its own line.
-      **Screenshot:** the screenshot file you saved for this page, written as
-      `screenshots/<exact-file-name>.png` (use the exact file name the screenshot tool
-      reported). Omit this line entirely if you did not capture a
-      screenshot for this page.
+      **Screenshot:** REQUIRED — the distinct screenshot file you saved on this
+      feature's screen, written as `screenshots/<exact-file-name>.png` (use the exact
+      file name the screenshot tool reported). Every feature subsection MUST have this
+      line, and each must reference a DIFFERENT file. If you have no screenshot for a
+      point, do not create a subsection for it (fold it into a sibling that does) —
+      never emit a feature subsection without a Screenshot line, because it breaks
+      video/audio sync.
       **Hook:** ONE short sentence the presenter opens with — an audience-benefit
       lead-in that says why this screen matters to the listener before any detail.
       This is the first thing said out loud; keep it plain and punchy.
@@ -273,6 +304,10 @@ Only after this synthesis, proceed to Phase 3 and write the file.
   exploration" bullet list at the end of section 3 that names each failure verbatim.
 - Every feature subsection in section 3 MUST include the actual URL you visited. If
   you did not visit a page, do not invent a subsection for it.
+- Every feature subsection in section 3 MUST include a Screenshot line pointing to a
+  distinct image you captured on that screen. The number of `####` subsections must
+  equal the number of screenshots you took. A feature without its own screenshot is
+  rendered as a text-only card and breaks video/audio sync, so never emit one.
 - Never fabricate features. If a feature is mentioned in the spec (when one was
   provided) but you could not find it in the UI, note that in the script under a
   "Not covered in this build" bullet at the end of section 3.
