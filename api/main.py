@@ -766,6 +766,20 @@ async def get_history_logs(app_slug: str, run_id: str):
     return storage.parse_local_log(_history_run(app_slug, run_id))
 
 
+@app.get("/api/history/{app_slug}/{run_id}/screenshots")
+async def get_history_screenshots(app_slug: str, run_id: str):
+    if Path(app_slug).name != app_slug or Path(run_id).name != run_id:
+        raise HTTPException(status_code=400, detail="Invalid run reference")
+    if STORAGE.enabled:
+        names = storage.list_run_blobs(STORAGE, app_slug, run_id)
+        return sorted(
+            name.split("/")[-1]
+            for name in names
+            if name.startswith("screenshots/") and Path(name).suffix.lower() in _IMAGE_SUFFIXES
+        )
+    return _run_screenshots(OUTPUT_ROOT / app_slug / run_id)
+
+
 @app.get("/api/history/{app_slug}/{run_id}/download")
 async def download_history_artifacts(app_slug: str, run_id: str):
     return _archive_response(_history_run(app_slug, run_id))
